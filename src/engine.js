@@ -2331,9 +2331,15 @@ async function seasonGames(lg, from) {
     c = LS.get(key, null);
   if (c && c.to === to && c.from === from) return c.g;
   if (from > to) return [];
+  // ESPN takes one month per request (dates=YYYYMM)
+  const months = [];
+  for (let y = +from.slice(0, 4), mo = +from.slice(4, 6); y * 100 + mo <= +to.slice(0, 6); mo === 12 ? ((y += 1), (mo = 1)) : (mo += 1)) months.push(y + String(mo).padStart(2, "0"));
   try {
-    const j = await J(BASE(lg) + "scoreboard?dates=" + from + "-" + to + "&limit=1000", 3600000);
-    const g = parseResults(j, lg);
+    const parts = await Promise.all(months.map((ym) => J(BASE(lg) + "scoreboard?dates=" + ym, 3600000).then((j) => parseResults(j, lg)).catch(() => [])));
+    const lo = from.slice(0, 4) + "-" + from.slice(4, 6) + "-" + from.slice(6),
+      hi = to.slice(0, 4) + "-" + to.slice(4, 6) + "-" + to.slice(6);
+    const seen = new Set();
+    const g = parts.flat().filter((x) => x.d >= lo && x.d <= hi && !seen.has(x.d + x.h) && seen.add(x.d + x.h));
     LS.set(key, { from, to, g });
     return g;
   } catch (e) {
