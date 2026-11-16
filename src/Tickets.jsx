@@ -57,27 +57,6 @@ function Tools({ t, legs, fair, stake, odds }) {
     <div className="tl"><div className="sub">Lock in money: bet against your last open bet</div><input type="number" step="0.01" min="1.01" placeholder="odds for the opposite" value={hg} onChange={e => setHg(e.target.value)} />{hedge}</div></details>
 }
 
-function TicketCard({ t }) {
-  const [, force] = useState(0); const [confirm, setConfirm] = useState(false)
-  const legs = t.legs.map(M.legState); const P = M.ticketP(t); const res = M.settled(legs); const Ev = M.ticketE(t); const stake = t.stake || E.STAKE, odds = M.tOdds(t)
-  const sg = M.signal(t, P, Ev, res, legs); const fair = Ev != null ? stake * Ev : null; const started = legs.some(l => l.s && l.s.state !== 'pre'); const c = M.clvOf(t)
-  const won = legs.filter(l => l.s && l.s.state !== 'pre' && l.p === 1).length
-  return <div className={'tk2 ' + sg.cls}>
-    <div className="tkh"><div><div className="tkn">{t.n}</div><div className="sub">{odds ? '@ ' + odds.toFixed(2) : 'odds missing'} · stake {clp(stake)} · pays {odds ? clp(stake * odds) : '–'}</div></div><div className="tst">{won}/{legs.length} won</div></div>
-    <div className="sig"><span className="badge">{sg.big}</span><span>{sg.txt}</span></div>
-    {!res && odds && started && <><div className="money"><div><span className="sub">Worth now (fair)</span><b>{fair != null ? clp(fair) : '–'}</b></div>
-      <div><span className="sub">What the bookie offers you now</span><input type="number" step="100" min="0" placeholder="type the amount" defaultValue={M.CO[t.id] || ''} onChange={e => { M.CO[t.id] = e.target.value; force(x => x + 1) }} /></div></div>
-      <Tools t={t} legs={legs} fair={fair} stake={stake} odds={odds} /></>}
-    <div className="legs">{legs.map((l, i) => { const st = l.s && l.s.state; const w = l.p === 1 && st !== 'pre', lo = l.p === 0 && st !== 'pre'
-      const sc = !l.s ? 'loading…' : st === 'pre' ? (l.s.date ? new Date(l.s.date).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '') : `${l.s.h}-${l.s.a}${st === 'in' ? ' · ' + l.s.clock : ' · FT'}`
-      return <div key={i} className="leg2" onClick={() => { M.selectMatch(t.legs[i].eid); window.dispatchEvent(new CustomEvent('mb:view', { detail: 'stadium' })) }}>
-        <span className={'i ' + (w ? 'ok' : lo ? 'ko' : 'sub')}>{w ? '✓' : lo ? '✗' : st === 'in' ? <span className="live-dot" /> : '○'}</span>
-        <div className="lt"><div>{l.m ? l.m.hA + '–' + l.m.aA : ''} · <b>{l.lab}</b>{t.legs[i].o ? <span className="sub"> @{t.legs[i].o}</span> : null}</div><div className="sub">{sc}</div><MatchLine eid={t.legs[i].eid} /></div></div> })}</div>
-    {c && <div className={'clv ' + (c.v >= 0 ? 'ok' : 'ko')}>Closing line value {c.v >= 0 ? '+' : ''}{(c.v * 100).toFixed(1)}%: you {c.v > .001 ? 'beat' : c.v < -.001 ? 'got worse than' : 'matched'} the closing price{c.fresh ? '' : ' (approximate)'}.</div>}
-    <div className="tkf"><button className="rmT" onClick={() => { if (confirm) M.removeTicket(t); else setConfirm(true) }}>{confirm ? (t.preset ? 'Click again to hide' : 'Click again to delete') : t.preset ? 'Hide' : 'Delete'}</button></div>
-  </div>
-}
-
 function Exposure() {
   const open = E.MY.filter(t => (t.real || !t.preset) && !M.settled(t.legs.map(M.legState))); const by = {}
   open.forEach(t => t.legs.forEach(l => { const k = l.eid + '|' + l.n; (by[k] = by[k] || { l, ts: [] }).ts.push(t) }))

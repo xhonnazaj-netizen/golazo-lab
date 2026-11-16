@@ -1,0 +1,27 @@
+# Retrains the ratings every night with penaltyblog and commits them; the commit triggers a new Pages deploy.
+name: Nightly model training
+on:
+  schedule:
+    - cron: "17 7 * * *"   # 07:17 UTC daily (04:17 in Chile)
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: model/requirements.txt
+      - run: pip install -r model/requirements.txt
+      - run: python model/train.py
+      - name: Commit new ratings if they changed
+        run: |
+          if git diff --quiet; then echo "No change"; exit 0; fi
+          git config user.name "golazo-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Nightly ratings update"
+          git push

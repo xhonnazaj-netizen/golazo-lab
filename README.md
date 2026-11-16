@@ -25,12 +25,37 @@ Everything runs in your browser. No account, no server, no tracking.
 - **Live:** score-state and red-card effects measured on 19,760 league games; momentum from the last 15 minutes of chances.
 - **Honesty:** every pre-match % is saved and checked at full time (Accuracy page). Bet types carry ★★★ (easy to predict) to ★ (close to a coin flip).
 
+## Project structure
+
+```
+src/
+  engine.js            live state, polling, tickets, live advisor (uses the modules below)
+  data/provider.js     the ONLY place that knows the data source (swap for a licensed API here)
+  data/match-data.js   embedded model data: timing curves, league averages, xG shot model
+  data/elo-data.js     ratings snapshot (written by model/train.py)
+  model/math.js        Poisson / Gamma sampling, Dixon-Coles grid, de-vig
+  model/ratings.js     Elo + form, blended 70/30 with penaltyblog Dixon-Coles
+  model/markets.js     every bet market, plain-word labels, predictability stars
+  util/storage.js      safe localStorage
+  App.jsx, Today.jsx, MatchView.jsx, Tickets.jsx, Assistant.jsx   screens
+model/train.py         nightly training with penaltyblog -> public/ratings.json
+tests/                 maths unit tests (Vitest)
+```
+
+## Nightly model training
+
+`.github/workflows/train.yml` runs `model/train.py` every night: it downloads the latest international results, fits Elo + form and a time-decayed Dixon-Coles model with [penaltyblog](https://github.com/martineastwood/penaltyblog), and commits `public/ratings.json`. The site then redeploys and the app loads the new ratings on start.
+
+Back-test on 2,959 competitive internationals (2023-2026), average Brier score over 14 markets (lower is better): Elo + form 0.19023 · Dixon-Coles 0.19253 · **70/30 blend 0.18944**.
+
 ## Develop
 
 ```bash
 npm install
 npm run dev      # local dev server
 npm test         # maths unit tests
+npm run lint     # code checks
+npm run train    # retrain ratings (needs: pip install -r model/requirements.txt)
 npm run build    # one self-contained dist/index.html
 ```
 

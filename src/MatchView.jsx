@@ -94,7 +94,7 @@ function Pings(){useTick(250);const now=Date.now();const P=M.PING.filter(p=>now-
   return <g>{P.map((p,i)=>{const a=(now-p.t)/7000,r=10+40*((now-p.t)%1400)/1400;return <g key={i} opacity={(1-a).toFixed(2)}><circle cx={p.x} cy={p.y} r={r} fill="none" stroke={p.c} strokeWidth="2.5"/><circle cx={p.x} cy={p.y} r="6" fill={p.c}/><text x={M.clamp(p.x,X0+90,X0+PW-90)} y={p.y<Y0+60?p.y+34:p.y-18} textAnchor="middle" fontFamily="Orbitron, Inter, sans-serif" fontSize="13" fill="#fff" style={{paintOrder:'stroke',stroke:'#02060c',strokeWidth:4}}>{p.txt}</text></g>})}</g>}
 
 export function Pitch({onPick}){
-  const bg=useMemo(backdrop,[]);const[tilt,setTilt]=useState(false);const[ms,setMs]=useState(null)
+  const bg=useMemo(backdrop,[]);const tilt=false
   const vb=M.PREF.pitch==='large'?'0 0 1200 760':'128 70 944 620'
   if(M.PREF.pitch==='hidden')return null
   return <div className="stage" id="stage">

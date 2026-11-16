@@ -60,3 +60,17 @@ describe('ready combinations', () => {
     }
   })
 })
+
+describe('Dixon-Coles blend (penaltyblog ratings)', () => {
+  it('has Dixon-Coles ratings for the big national teams', async () => {
+    const R = await import('../src/model/ratings.js')
+    const m = { h: 'Germany', a: 'Netherlands', neu: false }
+    const d = R.dcLam(m); expect(d).not.toBeNull()
+    const e = R.eloLam(m); expect(e[0]).toBeGreaterThan(0.5); expect(e[0]).toBeLessThan(3.5)
+  })
+  it('neutral venue removes home advantage', async () => {
+    const R = await import('../src/model/ratings.js')
+    const a = R.dcLam({ h: 'Spain', a: 'France', neu: false }), b = R.dcLam({ h: 'Spain', a: 'France', neu: true })
+    expect(b[0]).toBeLessThan(a[0]); expect(b[1]).toBeCloseTo(a[1], 6)
+  })
+})
