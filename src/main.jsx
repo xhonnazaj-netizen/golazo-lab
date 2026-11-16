@@ -22,5 +22,5 @@ start()
 
 // installable app: register the service worker only when served over http(s), not from a file
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}))
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').then(r => r.update()).catch(() => {}))
 }
