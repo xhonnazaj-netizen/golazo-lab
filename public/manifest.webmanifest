@@ -1,0 +1,11 @@
+{
+  "name": "Golazo Lab",
+  "short_name": "Golazo Lab",
+  "description": "The numbers behind the game.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#04060c",
+  "theme_color": "#04060c",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
