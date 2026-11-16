@@ -135,3 +135,19 @@ describe('assistant team database', () => {
     expect(D.glossary('what is X2?')[0].t).toBe('X2')
   })
 })
+
+describe('this season replay', () => {
+  it('a national win after the snapshot raises the winner', async () => {
+    const R = await import('../src/model/ratings.js')
+    const before = R.eloOf('Germany')
+    expect(R.applyNationalGames([{ d: '2099-01-01', h: 'Germany', a: 'Spain', hs: 3, as: 0, neu: true, t: 'qualification' }])).toBe(1)
+    expect(R.eloOf('Germany')).toBeGreaterThan(before)
+  })
+  it('club season adds promoted teams and moves ratings', async () => {
+    const R = await import('../src/model/ratings.js')
+    const n = R.applyClubSeason('eng.1', [{ d: '2099-08-20', h: 'Arsenal', a: 'Brand New FC', hs: 4, as: 0, yh: 1, ya: 3 }])
+    expect(n).toBe(1)
+    expect(R.clubKey('eng.1', 'Brand New FC')).toBe('Brand New FC')
+    expect(R.clubLam({ lg: 'eng.1', h: 'Arsenal', a: 'Brand New FC' })[0]).toBeGreaterThan(1.5)
+  })
+})

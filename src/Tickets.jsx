@@ -214,7 +214,8 @@ function WhatWins() {
   const L = M.myBetStats()
   return <div className="card"><h3>What wins for you</h3>
     {!L.length ? <p className="sub">When your games finish, your bets are grouped here by type (W1/W2, 1X/X2, Total Over…), so you can see what works for you.</p> : <>
-      {L.map(g => <div key={g.k} className="ww"><span>{g.k}</span><span className="wwbar"><i style={{ width: (g.w / g.n * 100) + '%' }} className={g.w / g.n >= .7 ? 'hi' : g.w / g.n >= .5 ? 'md' : 'lo'} /></span><b>{g.w}/{g.n}</b></div>)}
+      {L.map(g => { const ex = g.ne ? g.exp * g.n / g.ne : null; return <div key={g.k}><div className="ww"><span>{g.k}</span><span className="wwbar"><i style={{ width: (g.w / g.n * 100) + '%' }} className={g.w / g.n >= .7 ? 'hi' : g.w / g.n >= .5 ? 'md' : 'lo'} /></span><b>{g.w}/{g.n}</b></div>
+        {ex != null && g.ne >= 3 && <div className="sub ww2">we expected about {Math.round(ex)} · {g.w >= ex + 1 ? <span className="ok">better than expected ✓</span> : g.w <= ex - 1 ? <span className="ko">worse than expected</span> : 'as expected'}{g.ne >= 6 ? ' · the app now ranks this type ' + (g.w > ex ? 'a bit higher' : g.w < ex ? 'a bit lower' : 'the same') + ' for you' : ''}</div>}</div> })}
       <p className="sub">{L.filter(g => g.n >= 5).length ? 'Types with many losses: play them less, or only when the app shows 💰.' : 'Small numbers so far – wait for more games before changing anything.'}</p></>}</div>
 }
 

@@ -6,7 +6,7 @@ import { COMBO_REC } from './data/combo-record.js';
 import { LS } from './util/storage.js';
 import { BASE, W, J, lim } from './data/provider.js';
 import { rnd, pois, gam, bs, pp, gridOf, pdev, priorFrom, clamp } from './model/math.js';
-import { eloOf, eloLam, clubLam, cardsOf, updateElo, loadRatings } from './model/ratings.js';
+import { eloOf, eloLam, clubLam, cardsOf, updateElo, loadRatings, applyClubSeason, applyNationalGames, ratingsInfo } from './model/ratings.js';
 import { markets, marketsShown, shown, predictability, nice } from './model/markets.js';
 /* Golazo Lab engine: data, models, live polling, tickets. UI lives in React components. */
 const UI = { status: "Connecting…", ok: true, toasts: [], goal: null };
@@ -1066,6 +1066,15 @@ let LOG = LS.get("mb_log", []);
 const P0 = LS.get("mb_p0", {});
 const CO = {};
 const inTickets = (eid) => MY.some((t) => t.legs.some((l) => l.eid === eid));
+const LEGP0 = LS.get("mb_legp0", {});
+let p0Timer = null;
+const saveP0Soon = () => {
+  if (p0Timer) return;
+  p0Timer = setTimeout(() => {
+    p0Timer = null;
+    LS.set("mb_legp0", LEGP0);
+  }, 3000);
+};
 function legMk(l) {
   const m = byE[l.eid];
   return m ? markets(m).find((x) => x.n === l.n) : null;
@@ -1077,8 +1086,17 @@ function legState(l) {
   if (!mk) return { p: null, lab: l.n, m, s: S(l.eid) };
   const R = simOf(l.eid);
   const pw = frac(R, mk.f),
-    pu = mk.pu ? frac(R, mk.pu) : 0;
-  return { p: pw + pu, pw, pu, lab: l.n, m, s: S(l.eid), f: mk.f };
+    pu = mk.pu ? frac(R, mk.pu) : 0,
+    s = S(l.eid);
+  // remember our % before kick-off, to check later how your bets did against it
+  if (s.state === "pre") {
+    const k = l.eid + "|" + l.n;
+    if (LEGP0[k] == null || Math.abs(LEGP0[k] - (pw + pu)) > 0.01) {
+      LEGP0[k] = +(pw + pu).toFixed(3);
+      saveP0Soon();
+    }
+  }
+  return { p: pw + pu, pw, pu, lab: l.n, m, s, f: mk.f };
 }
 function ticketP(t) {
   const by = {};
@@ -1425,6 +1443,7 @@ function nextYmd(date) {
   const d = new Date(+date.slice(0, 4), +date.slice(4, 6) - 1, +date.slice(6, 8) + 1);
   return ymdOf(d);
 }
+const m0 = (x) => { const m = byE[x.eid]; return m ? [m.h, m.a].reduce((s, tm) => s.split(tm).join("T"), x.n) : x.n; };
 function pickList(date, kind, lo = 0.5, hi = 0.97, lgf, preOnly) {
   const out = [];
   dayGames(date).forEach(({ eid, lg, name }) => {
@@ -1444,7 +1463,16 @@ function pickList(date, kind, lo = 0.5, hi = 0.97, lgf, preOnly) {
     });
     if (best) out.push(best);
   });
-  return out.sort((a, b) => b.p - a.p);
+  // variety: the same bet (e.g. Total Under 4.5) at most 3 times, the rest go to the bottom
+  const seen = {};
+  const L = out.map((x) => ({ ...x, tilt: myTilt(x.n) })).sort((a, b) => b.p * b.tilt - a.p * a.tilt);
+  const top = [],
+    rest = [];
+  L.forEach((x) => {
+    const k = m0(x);
+    (seen[k] = (seen[k] || 0) + 1) <= 3 ? top.push(x) : rest.push(x);
+  });
+  return top.concat(rest);
 }
 // ---- ready tickets. Every rule below was tested on past match days (record shown in the app) ----
 function combos(date) {
@@ -1697,12 +1725,23 @@ function myBetStats() {
       const ls = legState(l);
       if (ls.p !== 1 && ls.p !== 0) return;
       const k = betKind(l.n);
-      const g = (G[k] = G[k] || { k, n: 0, w: 0 });
+      const g = (G[k] = G[k] || { k, n: 0, w: 0, exp: 0, ne: 0 });
       g.n++;
       g.w += ls.p;
+      const p0 = LEGP0[l.eid + "|" + l.n];
+      if (p0 != null) {
+        g.exp += p0;
+        g.ne++;
+      }
     }),
   );
   return Object.values(G).sort((a, b) => b.n - a.n);
+}
+// your tilt per bet type: after 6+ finished bets, types that win more than we expected rank a bit higher (max ±10%)
+function myTilt(n) {
+  const g = myBetStats().find((x) => x.k === betKind(n));
+  if (!g || g.ne < 6) return 1;
+  return clamp((g.w + 2) / (g.exp + 2), 0.9, 1.1);
 }
 // ---- best picks per team (for people building their own tickets) ----
 function bestPicks(eid) {
@@ -2256,9 +2295,83 @@ async function refreshOdds() {
   await pollLiveOdds([byE[SEL].lg]);
   emit();
 }
+// ---- this season's results (ESPN), replayed into our ratings once a day ----
+const INTL = ["uefa.nations", "fifa.friendly", "fifa.worldq.uefa", "fifa.worldq.conmebol", "fifa.worldq.concacaf", "fifa.worldq.afc", "fifa.worldq.caf", "uefa.euroq", "concacaf.nations.league", "fifa.world"];
+const CLUBLG = ["eng.1", "esp.1", "ita.1", "ger.1", "fra.1"];
+let SEASON = { nat: 0, club: 0 };
+function parseResults(j, lg) {
+  return (j.events || [])
+    .map((e) => {
+      const c = e.competitions && e.competitions[0];
+      if (!c || !c.status || !c.status.type || c.status.type.state !== "post") return null;
+      const H = c.competitors.find((x) => x.homeAway === "home"),
+        A = c.competitors.find((x) => x.homeAway === "away");
+      if (!H || !A || H.score == null || A.score == null) return null;
+      const yel = (side) => (c.details || []).filter((d) => (d.yellowCard || /yellow/i.test((d.type && d.type.text) || "")) && d.team && String(d.team.id) === String(side.team.id)).length;
+      const hasD = Array.isArray(c.details) && c.details.length > 0;
+      return {
+        d: String(e.date).slice(0, 10),
+        h: H.team.displayName,
+        a: A.team.displayName,
+        hs: +H.score,
+        as: +A.score,
+        neu: !!c.neutralSite,
+        t: lg === "fifa.friendly" ? "Friendly" : lg === "fifa.world" ? "FIFA World Cup" : "qualification",
+        yh: hasD ? yel(H) : null,
+        ya: hasD ? yel(A) : null,
+      };
+    })
+    .filter(Boolean);
+}
+async function seasonGames(lg, from) {
+  const y = new Date();
+  y.setDate(y.getDate() - 1);
+  const to = ymdOf(y),
+    key = "mb_ss_" + lg,
+    c = LS.get(key, null);
+  if (c && c.to === to && c.from === from) return c.g;
+  if (from > to) return [];
+  try {
+    const j = await J(BASE(lg) + "scoreboard?dates=" + from + "-" + to + "&limit=1000", 3600000);
+    const g = parseResults(j, lg);
+    LS.set(key, { from, to, g });
+    return g;
+  } catch (e) {
+    return (c && c.g) || [];
+  }
+}
+function refreshLams() {
+  Object.values(byE).forEach((m) => {
+    const s = S(m.eid);
+    if (s.state === "post") return;
+    const own = eloLam(m) || clubLam(m);
+    if (!own) return;
+    m.lamModel = own.slice();
+    m.lam = own.slice();
+    m.g = gridOf(own[0], own[1]);
+    const cy = cardsOf(m);
+    if (cy) m.y = cy;
+    delete SIMS[m.eid];
+  });
+}
+async function loadSeason() {
+  const info = ratingsInfo();
+  const next = (d) => (d ? nextYmd(String(d).replace(/-/g, "")) : "20260701");
+  const nat = (await Promise.all(INTL.map((lg) => seasonGames(lg, next(info.nat))))).flat().sort((a, b) => (a.d < b.d ? -1 : 1));
+  SEASON.nat = applyNationalGames(nat);
+  const clubs = await Promise.all(CLUBLG.map((lg) => seasonGames(lg, next(info.club))));
+  SEASON.club = 0;
+  CLUBLG.forEach((lg, i) => (SEASON.club += applyClubSeason(lg, clubs[i].sort((a, b) => (a.d < b.d ? -1 : 1)))));
+  SEASON.t = Date.now();
+  refreshLams();
+  emit();
+  return SEASON;
+}
 async function start() {
   // nightly ratings (Pages) first, so every new match is priced with the freshest team strengths
   await loadRatings();
+  // this season's results: wait up to 5 s, then carry on (the update still lands when it arrives)
+  await Promise.race([loadSeason().catch(() => {}), new Promise((r) => setTimeout(r, 5000))]);
   const d = new Date(),
     today = d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
   const pref = LS.get("mb_lg", "uefa.nations");
@@ -2292,6 +2405,9 @@ export const E = {
   },
   get DAY() {
     return DAY;
+  },
+  get SEASON() {
+    return SEASON;
   },
   get CUR() {
     return CUR;
@@ -2468,5 +2584,7 @@ export {
   setBook,
   bookName,
   myBetStats,
+  myTilt,
+  loadSeason,
   betKind,
 };

@@ -441,3 +441,6 @@ main.app{display:grid;grid-template-columns:270px minmax(0,1fr);gap:14px;padding
 @media(max-width:1100px){.livegrid{grid-template-areas:"p" "s" "r"}.livegrid>.rcol{position:static}}
 .lp-rest .ladv{margin-top:12px}.lp-rest #mom{margin-top:10px}
 .ww{display:grid;grid-template-columns:110px 1fr 44px;gap:8px;align-items:center;font-size:13px;padding:4px 0}.ww b{text-align:right;font-family:Orbitron,Inter,sans-serif;font-size:11px}.wwbar{height:8px;border-radius:4px;background:rgba(255,255,255,.07);overflow:hidden}.wwbar i{display:block;height:100%;border-radius:4px}.wwbar i.hi{background:var(--lm)}.wwbar i.md{background:var(--gd)}.wwbar i.lo{background:var(--bad)}
+.ww2{margin:-2px 0 6px;font-size:11px}
+.combos{align-items:start}.combo.wait{align-self:start}
+@media(max-width:760px){.cb-wait .big{font-size:22px}.td-top h2{font-size:20px}}

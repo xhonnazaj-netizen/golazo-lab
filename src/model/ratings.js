@@ -228,4 +228,70 @@ async function updateElo() {
   } catch (e) {}
 }
 
-export { eloOf, eloKey, formX, eloLam, dcLam, clubKey, clubLam, cardsOf, eloK, updateElo, loadRatings };
+// ---- this season, replayed in the browser every day from ESPN results (clubs + national teams) ----
+// Same update rules as the trained models, so the ratings stay current between nightly trainings.
+function applyClubSeason(lg, games) {
+  const T = CLUBS && CLUBS.teams && CLUBS.teams[lg];
+  const mu = CLUBS && CLUBS.lgm && CLUBS.lgm[lg];
+  if (!T || !mu || !games.length) return 0;
+  const b = CLUBS.b || 0.002, kp = CLUBS.kp || 25, K = 15, DEC = 0.9;
+  // new season: every rating moves 20% back towards average (as in training)
+  if (!CLUBS._reg) CLUBS._reg = {};
+  if (!CLUBS._reg[lg]) {
+    Object.values(T).forEach((v) => (v[0] = v[0] * 0.8 + 1500 * 0.2));
+    CLUBS._reg[lg] = 1;
+  }
+  const key = (name) => {
+    const k = clubKey(lg, name);
+    if (k) return k;
+    T[name] = [1450, [0, 0, 0, 0], 1]; // promoted team: starts below average
+    return name;
+  };
+  const ylg = (CLUBS.ylg || {})[lg] || 2;
+  let n = 0;
+  games.forEach((g) => {
+    if (g.d <= CLUBS.upto) return;
+    const h = key(g.h), a = key(g.a);
+    const H = T[h], A = T[a];
+    const dr = H[0] - A[0];
+    const lh0 = mu[0] * Math.exp(b * dr), la0 = mu[1] * Math.exp(-b * dr);
+    const W = g.hs > g.as ? 1 : g.hs === g.as ? 0.5 : 0, We = 1 / (Math.pow(10, -(dr + 60) / 400) + 1);
+    const gd = Math.abs(g.hs - g.as), G = gd <= 1 ? 1 : gd === 2 ? 1.5 : (11 + gd) / 8;
+    const d = K * G * (W - We);
+    H[0] += d;
+    A[0] -= d;
+    [[H, g.hs, lh0, g.as, la0], [A, g.as, la0, g.hs, lh0]].forEach(([v, gf, xf, ga, xa]) => {
+      const f = v[1];
+      f[0] = f[0] * DEC + gf; f[1] = f[1] * DEC + xf; f[2] = f[2] * DEC + ga; f[3] = f[3] * DEC + xa;
+    });
+    if (g.yh != null) { H[2] = (H[2] ?? 1) * 0.95 + (g.yh / ylg) * 0.05; A[2] = (A[2] ?? 1) * 0.95 + (g.ya / ylg) * 0.05; }
+    n++;
+  });
+  void kp;
+  return n;
+}
+function applyNationalGames(games) {
+  // in memory only: the weekly results.csv refresh stays the source of truth
+  const R = Object.assign({}, ELO.r), F = JSON.parse(JSON.stringify(ELO.f || {})), DEC = ELO.dec || 0.9;
+  let n = 0, upto = ELO.upto;
+  games.forEach((g) => {
+    if (g.d <= ELO.upto) return;
+    const h = eloKey(g.h) || g.h, a = eloKey(g.a) || g.a;
+    R[h] = R[h] ?? 1500; R[a] = R[a] ?? 1500;
+    const dr = R[h] - R[a] + (g.neu ? 0 : 100), lh0 = Math.exp(ELO.a + ELO.b * dr), la0 = Math.exp(ELO.a - ELO.b * dr);
+    [[h, g.hs, lh0, g.as, la0], [a, g.as, la0, g.hs, lh0]].forEach(([tm, gf, xf, ga, xa]) => {
+      const f = F[tm] || (F[tm] = [0, 0, 0, 0]);
+      f[0] = f[0] * DEC + gf; f[1] = f[1] * DEC + xf; f[2] = f[2] * DEC + ga; f[3] = f[3] * DEC + xa;
+    });
+    const We = 1 / (Math.pow(10, -dr / 400) + 1), W = g.hs > g.as ? 1 : g.hs === g.as ? 0.5 : 0, gd = Math.abs(g.hs - g.as);
+    const G = gd <= 1 ? 1 : gd === 2 ? 1.5 : (11 + gd) / 8, d = eloK(g.t || "") * G * (W - We);
+    R[h] += d; R[a] -= d;
+    if (g.d > upto) upto = g.d;
+    n++;
+  });
+  if (n) { ELO = Object.assign({}, ELO, { r: R, f: F, upto }); eloIdx(); }
+  return n;
+}
+const ratingsInfo = () => ({ nat: ELO.upto, club: CLUBS && CLUBS.upto });
+
+export { applyClubSeason, applyNationalGames, ratingsInfo, eloOf, eloKey, formX, eloLam, dcLam, clubKey, clubLam, cardsOf, eloK, updateElo, loadRatings };
