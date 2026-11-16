@@ -3,3 +3,5 @@ dist/
 .DS_Store
 *.log
 .env*
+# personal tickets (never published)
+src/data/personal.local.js

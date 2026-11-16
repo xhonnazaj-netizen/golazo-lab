@@ -6,6 +6,8 @@ function markets(m) {
   const h = m.h,
     a = m.a,
     L = [];
+  SIDE[h] = 1;
+  SIDE[a] = 2;
   const A = (g, n, f, k) => L.push({ g, n, f, k });
   const T = (R, n) => R.GH[n] + R.GA[n];
   A("Result", h + " win", (R, n) => R.GH[n] > R.GA[n], "H");
@@ -112,27 +114,31 @@ function predictability(n) {
   return 1;
 }
 
-function nice(n) {
+// Bets the app shows and suggests: 1X2 (incl. 1X / X2 / 12), Total Over/Under (match and team) and yellow cards.
+// Corners, halves, handicaps, both-teams-score etc. are still priced (old tickets keep working) but never suggested.
+function shown(n) {
+  return /^(Draw|No draw)$| win$| or draw$|^(Over|Under) \d+\.5$| over [012]\.5$|^(Over|Under) \d+\.5 yellows$/.test(n);
+}
+function marketsShown(m) {
+  return markets(m).filter((x) => shown(x.n));
+}
+
+// 1win words: W1 / X / W2, 1X / X2 / 12, Total Over / Under, Individual total, Yellow cards total.
+const SIDE = {};
+function nice(n, m) {
   if (!n) return n;
-  let m = n.match(/^(Over|Under) (\d+)\.5( corners| yellows| offsides)?$/);
-  if (m) {
-    const x = +m[2],
-      w = (m[3] || " goals").trim();
-    return m[1] === "Over" ? `${n} · ${x + 1}+ ${w}` : `${n} · ${x} or fewer ${w}`;
-  }
-  {
-    const k = n.match(/^(.+) over 0\.5$/);
-    if (k) return k[1] + " scores";
-    const k3 = n.match(/^(.+) over 2\.5$/);
-    if (k3 && !/^Over/.test(n)) return k3[1] + " scores 3+";
-    const k2 = n.match(/^(.+) over 1\.5$/);
-    if (k2) return k2[1] + " scores 2+";
-  }
-  if (n === "Both teams score") return "Both teams score";
-  if (n === "Not both score") return "One team won’t score";
-  if (/ or draw$/.test(n)) return n.replace(/ or draw$/, " wins or draws");
-  if (n === "No draw") return "Someone wins (no draw)";
+  const side = (team) => (m ? (team === m.h ? 1 : team === m.a ? 2 : 0) : SIDE[team] || 0);
+  let k;
+  if (n === "Draw") return "X · Draw";
+  if (n === "No draw") return "12 · No draw";
+  if ((k = n.match(/^(.+) win$/))) { const s = side(k[1]); return (s === 2 ? "W2" : s === 1 ? "W1" : "W") + " · " + k[1]; }
+  if ((k = n.match(/^(.+) or draw$/))) { const s = side(k[1]); return (s === 2 ? "X2" : s === 1 ? "1X" : "DC") + " · " + k[1] + " or draw"; }
+  if ((k = n.match(/^(Over|Under) (\d+\.5)$/))) return "Total " + k[1] + " " + k[2];
+  if ((k = n.match(/^(Over|Under) (\d+\.5) yellows$/))) return "Yellow cards Total " + k[1] + " " + k[2];
+  if ((k = n.match(/^(Over|Under) (\d+\.5) corners$/))) return "Corners Total " + k[1] + " " + k[2];
+  if ((k = n.match(/^(.+) over (\d\.5)$/))) return k[1] + " Total Over " + k[2];
+  if ((k = n.match(/^Next goal: (.+)$/))) return "Next goal · " + k[1];
   return n;
 }
 
-export { markets, predictability, nice };
+export { markets, marketsShown, shown, predictability, nice, SIDE };

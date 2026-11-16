@@ -1,10 +1,13 @@
 import DATA from './data/match-data.js';
+// personal tickets live in a git-ignored file; the public build simply has none
+const PERSONAL = Object.values(import.meta.glob('./data/personal.local.js', { eager: true }))[0];
+if (PERSONAL && PERSONAL.default && PERSONAL.default.T) DATA.T = PERSONAL.default.T;
 import { COMBO_REC } from './data/combo-record.js';
 import { LS } from './util/storage.js';
 import { BASE, W, J, lim } from './data/provider.js';
 import { rnd, pois, gam, bs, pp, gridOf, pdev, priorFrom, clamp } from './model/math.js';
-import { eloOf, eloLam, updateElo, loadRatings } from './model/ratings.js';
-import { markets, predictability, nice } from './model/markets.js';
+import { eloOf, eloLam, clubLam, cardsOf, updateElo, loadRatings } from './model/ratings.js';
+import { markets, marketsShown, shown, predictability, nice } from './model/markets.js';
 /* Golazo Lab engine: data, models, live polling, tickets. UI lives in React components. */
 const UI = { status: "Connecting…", ok: true, toasts: [], goal: null };
 let __v = 0,
@@ -97,6 +100,14 @@ const byE = {};
 DATA.M.forEach((m) => {
   m.lg = "uefa.nations";
   m.enh = 1;
+  // our own model only: the bookmaker's prices are kept for comparison, never mixed in
+  const own = eloLam(m) || m.lamModel;
+  if (own) {
+    m.lam = own.slice();
+    m.lamModel = own.slice();
+    m.g = gridOf(own[0], own[1]);
+    m.src = "our team ratings";
+  }
   byE[m.eid] = m;
 });
 const ST = {};
@@ -148,11 +159,7 @@ function remFrac(s) {
   return Math.max(0.03, 1 - CDF[Math.min(89, m - 1)]);
 }
 function lamsNow(m, s) {
-  const lv = liveMarketLam(m, s);
-  if (lv) {
-    const [lh0, la0, r0] = lamsModel(m, s);
-    return [0.7 * lv[0] + 0.3 * lh0, 0.7 * lv[1] + 0.3 * la0, r0];
-  }
+  // live: our own in-play model only (live bookmaker prices are compared, not mixed in)
   return lamsModel(m, s);
 }
 function lamsModel(m, s) {
@@ -161,7 +168,7 @@ function lamsModel(m, s) {
     la = m.lam[1];
   if (s.state === "in") {
     const fr = 1 - r,
-      w = m.odds && m.odds.H ? 0.05 : 0.25;
+      w = 0.15;
     lh = (1 - w * fr) * lh + w * s.xh;
     la = (1 - w * fr) * la + w * s.xa;
   }
@@ -227,24 +234,22 @@ function liveAdvice(eid) {
   lines.push(lead ? `${lead} lead ${Math.max(s.h, s.a)}-${Math.min(s.h, s.a)} at ${s.clock}` : `Level ${s.h}-${s.a} at ${s.clock}`);
   if (mo) {
     const top = mo.share > 0.62 ? m.h : mo.share < 0.38 ? m.a : null;
-    lines.push(top ? `${top} on top in the last 15 min (chances ${mo.h.toFixed(1)} v ${mo.a.toFixed(1)})` : `Even game in the last 15 min`);
+    lines.push(top ? `${top} on top in the last 15 min` : `Even game in the last 15 min`);
   } else lines.push("Quiet spell – few chances in the last 15 min");
   if (s.rh || s.ra) lines.push(`Red card: ${s.rh ? m.h : m.a} down to 10`);
   const more = R.lh + R.la;
-  lines.push(
-    `Goals expected from here: ${more.toFixed(1)} → ${more < 0.45 ? "probably no more goals" : more < 1.1 ? "about 1 more goal" : "more goals likely"}`,
-  );
+  lines.push(more < 0.45 ? "Probably no more goals" : more < 1.1 ? "We expect about 1 more goal" : "More goals likely");
   const cands = [];
   const add = (n, why) => {
     const p = P(n);
-    if (p != null && p >= 0.55 && p <= 0.93) cands.push({ eid, n, p, min: 1.05 / p, why });
+    if (p != null && p >= 0.55 && p <= 0.93 && shown(n)) cands.push({ eid, n, p, min: 1.05 / p, why, need: needInfo(eid, n) });
   };
   add(`Over ${t + 0.5}`, mo && mo.h + mo.a > 0.8 ? "both sides creating chances" : "goals still expected");
   add(`Under ${t + 1.5}`, !mo ? "slow game, few chances" : "game under control");
   add(`Under ${t + 2.5}`, "two more goals unlikely");
-  add("No more goals", !mo ? "quiet spell" : "");
-  if (mo && mo.share > 0.62) add(`Next goal: ${m.h}`, `${m.h} pressing`);
-  if (mo && mo.share < 0.38) add(`Next goal: ${m.a}`, `${m.a} pressing`);
+  const yc = (s.yh || 0) + (s.ya || 0);
+  add(`Over ${yc + 0.5} yellows`, s.min > 55 && Math.abs(s.h - s.a) <= 1 ? "tight game, cards come late" : "");
+  add(`Under ${yc + 2.5} yellows`, s.min > 70 ? "little time left for cards" : "");
   if (lead) {
     add(`${lead} win`, `${lead} ahead`);
     add(`${lead} or draw`, `${lead} ahead, safer`);
@@ -292,52 +297,11 @@ function liveIdeas() {
         pct(b.p) +
         " – " +
         b.why +
-        ". Bet if the bookie pays " +
+        ". Bet if " + BOOK + " pays " +
         b.min.toFixed(2) +
         "+",
     );
   });
-}
-function liveMarketLam(m, s) {
-  const lo = LO[m.eid];
-  if (!lo || !lo.live || s.state !== "in" || Date.now() - lo.t > 360000) return null;
-  const o = lo.o;
-  const t = s.h + s.a;
-  const keys = Object.keys(o)
-    .filter((k) => k[0] === "O" && o["U" + k.slice(1)])
-    .map((k) => +k.slice(1))
-    .filter((L) => L > t);
-  if (!keys.length || !o.H || !o.D || !o.A) return null;
-  const L = keys.sort((a, b) => Math.abs(a - t - 1.5) - Math.abs(b - t - 1.5))[0];
-  const pO = pdev([o["O" + L], o["U" + L]])[0],
-    need = Math.floor(L - t) + 1;
-  let lo2 = 0.01,
-    hi = 6,
-    lam = 1;
-  for (let it = 0; it < 40; it++) {
-    lam = (lo2 + hi) / 2;
-    let c = 0;
-    for (let k = 0; k < need; k++) c += pp(k, lam);
-    1 - c > pO ? (hi = lam) : (lo2 = lam);
-  }
-  const p3 = pdev([o.H, o.D, o.A]),
-    pd = p3[0] - p3[2];
-  let a = 0.01,
-    b = 0.99,
-    f = 0.5;
-  for (let it = 0; it < 40; it++) {
-    f = (a + b) / 2;
-    let ph = 0,
-      pa = 0;
-    for (let i = 0; i < 10; i++)
-      for (let j = 0; j < 10; j++) {
-        const p = pp(i, lam * f) * pp(j, lam * (1 - f));
-        if (s.h + i > s.a + j) ph += p;
-        else if (s.a + j > s.h + i) pa += p;
-      }
-    ph - pa > pd ? (b = f) : (a = f);
-  }
-  return [lam * f, lam * (1 - f)];
 }
 function remC(s, cdf) {
   if (s.state === "post") return 0;
@@ -460,12 +424,14 @@ function mkMatch(e, lg) {
     dyn: 1,
     neu: !!c.neutralSite,
   };
-  const EL = eloLam(m);
+  const EL = eloLam(m) || clubLam(m);
   if (EL) {
     m.lam = EL;
     m.lamModel = EL;
-    m.src = "team strength ratings (Elo)";
+    m.src = "our team ratings";
   }
+  const cy = cardsOf(m);
+  if (cy) m.y = cy;
   m.g = gridOf(m.lam[0], m.lam[1]);
   byE[m.eid] = m;
   lim(() => enrich(m)).catch(() => {});
@@ -507,20 +473,14 @@ function formModel(m, sm) {
 }
 function applyOwnModel(m, sm) {
   if (m.enh) return;
-  const F = eloLam(m) || formModel(m, sm);
-  const isElo = !!eloLam(m);
-  const L = m.odds ? priorFrom(m.odds) : null;
-  let lam = null;
-  if (L && F) {
-    lam = [0.85 * L[0] + 0.15 * F[0], 0.85 * L[1] + 0.15 * F[1]];
-    m.src = isElo ? "bookmaker prices + team ratings" : "bookmaker prices + recent form";
-  } else if (L) {
-    lam = L;
-    m.src = "bookmaker prices";
-  } else if (F) {
-    lam = F;
-    m.src = isElo ? "team strength ratings (Elo)" : "recent form (last 5 games)";
-  }
+  // our own model: national-team ratings or club ratings, plus each team's last 5 games. Bookmaker odds are NOT mixed in.
+  const R = eloLam(m) || clubLam(m);
+  const F5 = formModel(m, sm);
+  let F = R;
+  if (R && F5 && !eloLam(m)) F = [Math.exp(0.75 * Math.log(R[0]) + 0.25 * Math.log(F5[0])), Math.exp(0.75 * Math.log(R[1]) + 0.25 * Math.log(F5[1]))];
+  if (!F) F = F5;
+  let lam = F;
+  m.src = R ? "our team ratings" : F5 ? "recent form (last 5 games)" : "league average";
   if (F) m.lamModel = F;
   if (!lam) return;
   m.lam = lam;
@@ -530,7 +490,7 @@ function applyOwnModel(m, sm) {
   const tc = lg.c[0] + lg.c[1],
     ty = lg.y[0] + lg.y[1];
   m.c = [+(tc * (0.5 + 0.6 * (sh - 0.5))).toFixed(2), +(tc * (0.5 - 0.6 * (sh - 0.5))).toFixed(2)];
-  m.y = [+(ty * (0.5 - 0.3 * (sh - 0.5))).toFixed(2), +(ty * (0.5 + 0.3 * (sh - 0.5))).toFixed(2)];
+  m.y = cardsOf(m) || [+(ty * (0.5 - 0.3 * (sh - 0.5))).toFixed(2), +(ty * (0.5 + 0.3 * (sh - 0.5))).toFixed(2)];
 }
 function setOddsKey(k) {
   ODDS_KEY = (k || "").trim();
@@ -689,8 +649,15 @@ function parseComm(sm, m) {
   const hn = H.team.displayName,
     an = A.team.displayName;
   const shots = [],
-    corn = [];
+    corn = [],
+    feed = [];
   (sm.commentary || []).forEach((c, i) => {
+    const txt = (c.text || "").trim();
+    if (txt) {
+      const ty0 = (c.play && c.play.type && c.play.type.type) || "";
+      const tm0 = c.play && c.play.team && c.play.team.displayName;
+      feed.push({ c: (c.time && c.time.displayValue) || "", tx: txt, side: tm0 === hn ? 0 : tm0 === an ? 1 : -1, k: /goal/.test(ty0) && !/disallow|attempt/.test(ty0) ? "goal" : /red-card/.test(ty0) ? "red" : /yellow-card/.test(ty0) ? "yel" : /substitution/.test(ty0) ? "sub" : /shot|attempt|saved|woodwork|post/.test(ty0) ? "shot" : "" });
+    }
     const ty = (c.play && c.play.type && c.play.type.type) || "";
     const tm = c.play && c.play.team && c.play.team.displayName;
     const side = tm === hn ? 0 : tm === an ? 1 : -1;
@@ -732,7 +699,7 @@ function parseComm(sm, m) {
       shots.push({ mi, side, z, f, goal, xg: xgOf(z, f), lr, i, who: who ? who[1] : "", ty, on: /on-target|^goal|saved/.test(ty) });
     }
   });
-  return { shots, corn };
+  return { shots, corn, feed: feed.reverse().slice(0, 60) };
 }
 async function pollSummary(eid) {
   const s = S(eid),
@@ -775,6 +742,7 @@ async function pollSummary(eid) {
     if (pc) {
       s.shots = pc.shots;
       s.corn = pc.corn;
+      s.feed = pc.feed;
       pingNew(eid);
       s.xh = pc.shots.filter((x) => x.side === 0).reduce((a, x) => a + x.xg, 0);
       s.xa = pc.shots.filter((x) => x.side === 1).reduce((a, x) => a + x.xg, 0);
@@ -1206,8 +1174,8 @@ function checkAlerts() {
         pv = PREVL[k];
       const st = l.s.state !== "pre" && l.p === 1 ? "W" : l.s.state !== "pre" && l.p === 0 ? "L" : "-";
       if (pv) {
-        if (st === "W" && pv.st !== "W") alertMsg("good", "✓ " + t.n + ": " + l.m.hA + "–" + l.m.aA + " " + l.lab + " won ✓");
-        if (st === "L" && pv.st !== "L") alertMsg("bad", "✗ " + t.n + ": " + l.m.hA + "–" + l.m.aA + " " + l.lab + " lost");
+        if (st === "W" && pv.st !== "W") alertMsg("good", "✓ " + t.n + ": " + l.m.hA + "–" + l.m.aA + " " + nice(l.lab, l.m) + " won ✓");
+        if (st === "L" && pv.st !== "L") alertMsg("bad", "✗ " + t.n + ": " + l.m.hA + "–" + l.m.aA + " " + nice(l.lab, l.m) + " lost");
         if (st === "-" && l.s.state === "in" && l.p < 0.35 && pv.p >= 0.35)
           alertMsg("warn", "⚠ " + t.n + ": " + nice(l.lab) + " (" + l.m.hA + "–" + l.m.aA + ") is in trouble");
         if (st === "-" && l.s.state === "in" && l.p - pv.p > 0.2)
@@ -1376,6 +1344,47 @@ function countdown(d) {
 
 let DAY = null;
 const DAYLOAD = {};
+
+// ---- the bookmaker's view, for comparison only: their % with the margin removed, and their odds ----
+function bookOdds(m, n) {
+  const lo = LO[m.eid],
+    st = S(m.eid).state;
+  if (st === "post") return null;
+  const liveOk = lo && lo.live && Date.now() - lo.t < 360000;
+  if (st === "in" && !liveOk) return null;
+  const o = st === "in" ? lo.o : Object.assign({}, m.odds || {}, (lo && !lo.live && lo.o) || {});
+  const H = o.H, D = o.D, A = o.A;
+  let k;
+  if (H && D && A) {
+    const [ph, pd, pa] = pdev([H, D, A]);
+    if (n === m.h + " win") return { p: ph, o: H };
+    if (n === "Draw") return { p: pd, o: D };
+    if (n === m.a + " win") return { p: pa, o: A };
+    if (n === m.h + " or draw") return { p: ph + pd, o: null };
+    if (n === m.a + " or draw") return { p: pa + pd, o: null };
+    if (n === "No draw") return { p: ph + pa, o: null };
+  }
+  if ((k = n.match(/^(Over|Under) (\d+\.5)$/)) && o["O" + k[2]] && o["U" + k[2]]) {
+    const [po, pu] = pdev([o["O" + k[2]], o["U" + k[2]]]);
+    return k[1] === "Over" ? { p: po, o: o["O" + k[2]] } : { p: pu, o: o["U" + k[2]] };
+  }
+  return null;
+}
+// value = our % is clearly above the bookmaker's: their odds pay more than the bet is worth
+function valueOf(m, n, p) {
+  const b = bookOdds(m, n);
+  if (!b) return null;
+  const ev = b.o ? p * b.o : null;
+  return { book: b.p, odds: b.o, diff: p - b.p, ev, value: ev ? ev >= 1.05 : p - b.p >= 0.05 };
+}
+// the bookmaker the user plays at (only a name for labels; nothing is sent there)
+let BOOK = LS.get("mb_book", "1win") || "1win";
+function setBook(v) {
+  BOOK = String(v || "").trim().slice(0, 20) || "1win";
+  LS.set("mb_book", BOOK);
+  emit();
+}
+const bookName = () => BOOK;
 function ymdOf(d) {
   return d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
 }
@@ -1387,6 +1396,13 @@ async function loadDay(date) {
     await Promise.all(LEAGUES.map(([lg]) => pollBoard(lg, date)));
   }
   emit();
+  // tomorrow too, so Fire 9 / Best 6 can fill up late in the day
+  const nx = nextYmd(date);
+  if (!DAYLOAD[nx]) {
+    DAYLOAD[nx] = 1;
+    await Promise.all(LEAGUES.map(([lg]) => pollBoard(lg, nx)));
+    emit();
+  }
 }
 function dayGames(date) {
   const out = [];
@@ -1399,37 +1415,16 @@ function dayGames(date) {
 }
 const PICKSETS = {
   safe: (m) => [m.h + " or draw", m.a + " or draw", m.h + " over 0.5", m.a + " over 0.5", "Over 1.5", "Under 3.5", "Under 4.5"],
-  goals: (m) => [
-    "Over 1.5",
-    "Over 2.5",
-    "Over 3.5",
-    "Under 2.5",
-    "Under 3.5",
-    "Both teams score",
-    "Not both score",
-    m.h + " over 0.5",
-    m.a + " over 0.5",
-    m.h + " over 1.5",
-    m.a + " over 1.5",
-  ],
-  teams: (m) => [
-    m.h + " win",
-    m.a + " win",
-    m.h + " or draw",
-    m.a + " or draw",
-    m.h + " draw no bet",
-    m.a + " draw no bet",
-    m.h + " wins by 2+",
-    m.a + " wins by 2+",
-    m.h + " win to nil",
-    m.a + " win to nil",
-    m.h + " over 0.5",
-    m.a + " over 0.5",
-  ],
-  corners: (m) => [m.h + " more corners", m.a + " more corners"],
+  goals: (m) => ["Over 1.5", "Over 2.5", "Over 3.5", "Under 2.5", "Under 3.5", m.h + " over 0.5", m.a + " over 0.5", m.h + " over 1.5", m.a + " over 1.5"],
+  teams: (m) => [m.h + " win", m.a + " win", m.h + " or draw", m.a + " or draw", m.h + " over 0.5", m.a + " over 0.5"],
+  cards: (m) => ["Over 2.5 yellows", "Over 3.5 yellows", "Over 4.5 yellows", "Under 3.5 yellows", "Under 4.5 yellows", "Under 5.5 yellows"],
   wins: (m) => [m.h + " win", m.a + " win"],
   fire: (m) => [m.h + " or draw", m.a + " or draw", "Over 1.5", "Under 3.5", m.h + " over 0.5", m.a + " over 0.5"],
 };
+function nextYmd(date) {
+  const d = new Date(+date.slice(0, 4), +date.slice(4, 6) - 1, +date.slice(6, 8) + 1);
+  return ymdOf(d);
+}
 function pickList(date, kind, lo = 0.5, hi = 0.97, lgf, preOnly) {
   const out = [];
   dayGames(date).forEach(({ eid, lg, name }) => {
@@ -1440,26 +1435,31 @@ function pickList(date, kind, lo = 0.5, hi = 0.97, lgf, preOnly) {
       R = simOf(eid),
       L = markets(m);
     let best = null;
-    PICKSETS[kind](m).forEach((n) => {
+    (PICKSETS[kind] || PICKSETS.safe)(m).forEach((n) => {
       const x = L.find((k) => k.n === n);
-      if (!x) return;
+      if (!x || !shown(n)) return;
       const p = frac(R, x.f);
       if (p < lo || p > hi) return;
-      if (!best || p > best.p) best = { eid, n, p, lg, name };
+      if (!best || p > best.p) best = { eid, n, p, lg, name, v: valueOf(m, n, p) };
     });
     if (best) out.push(best);
   });
   return out.sort((a, b) => b.p - a.p);
 }
+// ---- ready tickets. Every rule below was tested on past match days (record shown in the app) ----
 function combos(date) {
   const C = [];
-  const po = dayGames(date).some((g) => S(g.eid).state === "pre");
-  // every ready ticket aims for total fair odds of 4 or more (user rule); legs: best bet per game, highest % first, max N of one type
-  const cand = (names, lo, hi) => {
+  // games still to play today; if today has too few, tomorrow's games are added (so Fire 9 always has 9)
+  // games for a ticket: today's games still to start; if too few, games being played now, then tomorrow's games
+  const pool = (need) => {
+    let g = dayGames(date).filter((x) => S(x.eid).state === "pre");
+    if (g.length < need) g = g.concat(dayGames(date).filter((x) => S(x.eid).state === "in" && (S(x.eid).min || 0) < 60));
+    if (g.length < need) g = g.concat(dayGames(nextYmd(date)).filter((x) => S(x.eid).state === "pre"));
+    return g;
+  };
+  const cand = (names, lo, hi, need = 0) => {
     const out = [];
-    dayGames(date).forEach(({ eid, lg, name }) => {
-      const s = S(eid);
-      if (s.state === "post" || (po && s.state !== "pre")) return;
+    pool(need).forEach(({ eid, lg, name }) => {
       const m = byE[eid],
         R = simOf(eid),
         L = markets(m);
@@ -1472,6 +1472,7 @@ function combos(date) {
     });
     return out.sort((a, b) => b.p - a.p);
   };
+  // one bet per game, highest % first, at most `maxper` of one kind; stop when total odds reach `target`
   const take = (L, target, maxper, maxlegs = 10) => {
     const sel = [],
       c = {},
@@ -1487,10 +1488,30 @@ function combos(date) {
     }
     return 1 / P >= target ? sel : [];
   };
+  // exactly n bets, safest first; if total odds stay under `target`, start one step lower down the list (Fire 9)
+  const exact = (L, n, maxper, target = 4) => {
+    for (let s = 0; s < L.length; s++) {
+      const sel = [],
+        c = {},
+        used = new Set();
+      let P = 1;
+      for (const x of L.slice(s)) {
+        if (used.has(x.eid) || (c[x.ty] || 0) >= maxper) continue;
+        sel.push(x);
+        used.add(x.eid);
+        c[x.ty] = (c[x.ty] || 0) + 1;
+        P *= x.p;
+        if (sel.length === n) break;
+      }
+      if (sel.length < n) return [];
+      if (1 / P >= target) return sel;
+    }
+    return [];
+  };
   const mk = (id, title, desc, L) => {
     if (L.length >= 2) {
       const P = L.reduce((a, x) => a * x.p, 1);
-      C.push({ id, title, desc, legs: L, fair: 1 / P, rec: COMBO_REC[id] || null });
+      C.push({ id, title, desc, legs: L, fair: 1 / P, rec: COMBO_REC[id] || null, st: strengthOf(L.map((x) => x.p)) });
     }
   };
   const DC = (m) => [
@@ -1505,68 +1526,32 @@ function combos(date) {
       [m.h + " win", "w"],
       [m.a + " win", "w"],
     ];
-  mk("fav", "👑 Favourites 4+", "the strongest teams to win", take(cand(W, 0.55, 0.9), 4, 99));
-  mk(
-    "mix",
-    "🎯 Mix 4+",
-    "wins, double chance and goals mixed",
-    take(
-      cand((m) => [...W(m), ...DC(m), ...SC(m), ["Over 1.5", "o15"], ["Under 3.5", "u35"]], 0.6, 0.88),
-      4,
-      2,
-    ),
-  );
-  mk(
-    "f9",
-    "🔥 Fire 9",
-    "your favourite: about 9 safe-ish bets",
-    take(
-      cand((m) => [...DC(m), ...SC(m), ["Over 1.5", "o15"], ["Under 3.5", "u35"]], 0.72, 0.88),
-      4,
-      3,
-    ),
-  );
-  mk(
-    "gol",
-    "⚽ Goals 4+",
-    "only goal bets",
-    take(
-      cand(
-        (m) => [["Over 1.5", "o15"], ["Over 2.5", "o25"], ["Under 3.5", "u35"], ["Under 2.5", "u25"], ["Not both score", "nb"], ...SC(m)],
-        0.6,
-        0.9,
-      ),
-      4,
-      3,
-    ),
-  );
-  mk(
-    "big",
-    "💰 Big payout 10+",
-    "fewer, riskier bets",
-    take(
-      cand((m) => [...W(m), ...DC(m), ...SC(m)], 0.45, 0.7),
-      10,
-      99,
-    ),
-  );
-  mk(
-    "cor",
-    "🚩 Corners 4+",
-    "which team wins the corners",
-    take(
-      cand(
-        (m) => [
-          [m.h + " more corners", "cm"],
-          [m.a + " more corners", "cm"],
-        ],
-        0.6,
-        0.9,
-      ),
-      4,
-      99,
-    ),
-  );
+  const f9 = exact(cand((m) => [...DC(m), ...SC(m), ["Over 1.5", "o15"], ["Under 3.5", "u35"]], 0.72, 0.88, 9), 9, 3);
+  mk("f9", "🔥 Fire 9", "9 games, one safe bet each", f9);
+  // Fire 9 never just disappears: say why it is missing
+  if (!f9.length) C.push({ id: "f9", wait: true, title: "🔥 Fire 9", desc: "needs 9 games with a safe bet", have: new Set(cand((m) => [...DC(m), ...SC(m), ["Over 1.5", "o15"], ["Under 3.5", "u35"]], 0.72, 0.88, 9).map((x) => x.eid)).size, rec: COMBO_REC.f9 });
+  // Best 6: in each game the bet that pays most while our % stays 60-80%, then the 6 strongest games
+  const b6 = [];
+  pool(6).forEach(({ eid, lg, name }) => {
+    const m = byE[eid],
+      R = simOf(eid),
+      L = markets(m);
+    let best = null;
+    [...W(m), ...DC(m), ...SC(m)].forEach(([n, ty]) => {
+      const x = L.find((k) => k.n === n);
+      if (!x) return;
+      const p = frac(R, x.f);
+      if (p >= 0.6 && p <= 0.8 && (!best || p < best.p)) best = { eid, n, p, lg, name, ty };
+    });
+    if (best) b6.push(best);
+  });
+  b6.sort((a, b) => b.p - a.p);
+  let s6 = 0;
+  while (b6.length - s6 >= 6 && 1 / b6.slice(s6, s6 + 6).reduce((a, x) => a * x.p, 1) < 4) s6++;
+  mk("b6", "💎 Best 6", "6 games, the best-paying bet we still like", b6.length - s6 >= 6 ? b6.slice(s6, s6 + 6) : []);
+  mk("fav", "👑 Favourites 4+", "the strongest teams to win (W1 / W2)", take(cand(W, 0.55, 0.9), 4, 99));
+  mk("gol", "⚽ Goals 4+", "only Total Over / Under bets", take(cand((m) => [["Over 1.5", "o15"], ["Over 2.5", "o25"], ["Under 3.5", "u35"], ["Under 2.5", "u25"], ...SC(m)], 0.6, 0.9), 4, 3));
+  mk("big", "💰 Big payout 10+", "fewer, riskier bets", take(cand((m) => [...W(m), ...DC(m), ...SC(m)], 0.45, 0.7), 10, 99));
   return C;
 }
 function useCombo(L) {
@@ -1578,6 +1563,147 @@ function useCombo(L) {
     }),
   );
 }
+// ---- ticket strength: judged bet by bet (each bet's own %), never "the chance of the whole ticket" ----
+function strengthOf(ps) {
+  const P = ps.filter((p) => p != null);
+  if (!P.length) return null;
+  const s = (p) => Math.max(0, Math.min(10, ((p - 0.5) / 0.45) * 10));
+  const avg = P.reduce((a, p) => a + p, 0) / P.length,
+    low = Math.min(...P);
+  const weak = P.filter((p) => p < 0.6).length;
+  // each bet gets 0-10 (50% = 0, 95% = 10); the ticket = 60% the average bet + 40% the weakest bet
+  const sc = Math.round(0.6 * (P.reduce((a, p) => a + s(p), 0) / P.length) + 0.4 * s(low));
+  const lab = sc >= 7 ? "Strong" : sc >= 5 ? "Good" : sc >= 3 ? "Medium" : "Risky";
+  return { sc, lab, avg, low, weak, n: P.length };
+}
+function ticketStrength(t) {
+  const legs = t.legs.map((l) => ({ l, ...legState(l) }));
+  const open = legs.filter((x) => x.p != null && !(x.s && x.s.state === "post"));
+  const st = strengthOf(open.map((x) => x.p));
+  if (!st) return null;
+  const weakest = open.slice().sort((a, b) => a.p - b.p)[0];
+  return { ...st, weakest: weakest && { eid: weakest.l.eid, n: weakest.l.n, p: weakest.p } };
+}
+// ---- protection: a safer bet in the same game, or a small bet on the opposite of the weakest bet ----
+function saferOf(m, n) {
+  let k;
+  const out = [];
+  if ((k = n.match(/^(.+) win$/))) out.push(k[1] + " or draw");
+  if (n === "Draw") out.push(m.h + " or draw", m.a + " or draw");
+  if ((k = n.match(/^Over (\d+)\.5$/)) && +k[1] > 0) out.push("Over " + (+k[1] - 1) + ".5");
+  if ((k = n.match(/^Under (\d+)\.5$/))) out.push("Under " + (+k[1] + 1) + ".5");
+  if ((k = n.match(/^(.+) over (\d)\.5$/)) && +k[2] > 0) out.push(k[1] + " over " + (+k[2] - 1) + ".5");
+  if ((k = n.match(/^Over (\d+)\.5 yellows$/)) && +k[1] > 1) out.push("Over " + (+k[1] - 1) + ".5 yellows");
+  if ((k = n.match(/^Under (\d+)\.5 yellows$/))) out.push("Under " + (+k[1] + 1) + ".5 yellows");
+  return out;
+}
+function oppositeOf(m, n) {
+  let k;
+  if ((k = n.match(/^(.+) win$/))) return k[1] === m.h ? m.a + " or draw" : m.h + " or draw";
+  if ((k = n.match(/^(.+) or draw$/))) return k[1] === m.h ? m.a + " win" : m.h + " win";
+  if (n === "Draw") return "No draw";
+  if (n === "No draw") return "Draw";
+  if ((k = n.match(/^Over (\d+\.5)$/))) return "Under " + k[1];
+  if ((k = n.match(/^Under (\d+\.5)$/))) return "Over " + k[1];
+  if ((k = n.match(/^Over (\d+\.5) yellows$/))) return "Under " + k[1] + " yellows";
+  if ((k = n.match(/^Under (\d+\.5) yellows$/))) return "Over " + k[1] + " yellows";
+  return null;
+}
+function protection(t) {
+  const st = ticketStrength(t);
+  if (!st || !st.weakest) return null;
+  const w = st.weakest,
+    m = byE[w.eid];
+  if (!m) return null;
+  const R = simOf(w.eid),
+    L = markets(m);
+  const P = (n) => {
+    const x = L.find((k) => k.n === n);
+    return x ? frac(R, x.f) + (x.pu ? frac(R, x.pu) : 0) : null;
+  };
+  const swap = saferOf(m, w.n)
+    .map((n) => ({ n, p: P(n) }))
+    .filter((x) => x.p != null && x.p > w.p + 0.04)[0];
+  const opp = oppositeOf(m, w.n),
+    po = opp ? P(opp) : null;
+  const stake = t.stake || STAKE,
+    odds = tOdds(t);
+  // the cover bet pays back your stake if the weak bet loses: cover stake = ticket stake / (cover odds - 1)
+  let cover = null;
+  if (opp && po > 0.05 && po < 0.95) {
+    const bo = (bookOdds(m, opp) || {}).o;
+    const co = bo || +(0.93 / po).toFixed(2);
+    if (co > 1.05) cover = { n: opp, p: po, o: co, oursOnly: !bo, stake: Math.ceil(stake / (co - 1) / 10) * 10, worth: odds ? odds * stake > (stake + stake / (co - 1)) * 1.3 : true };
+  }
+  return { weakest: w, m, swap: swap ? { ...swap, from: w.p } : null, cover };
+}
+// ---- "how many are missing": what a bet still needs, live ----
+function needInfo(eid, n) {
+  const m = byE[eid],
+    s = S(eid);
+  if (!m || !s || s.state === "pre") return null;
+  const g = (s.h || 0) + (s.a || 0),
+    y = (s.yh || 0) + (s.ya || 0);
+  let k, need, done, txt;
+  const pl = (x, w) => x + " more " + w + (x === 1 ? "" : "s");
+  if ((k = n.match(/^Over (\d+)\.5$/))) {
+    need = +k[1] + 1 - g;
+    txt = need <= 0 ? "✓ done" : "needs " + pl(need, "goal");
+    done = need <= 0;
+  } else if ((k = n.match(/^Under (\d+)\.5$/))) {
+    const room = +k[1] - g;
+    txt = room < 0 ? "✗ too many goals" : room === 0 ? "no more goals allowed" : "can take " + pl(room, "goal");
+    done = room < 0 ? false : null;
+  } else if ((k = n.match(/^(.+) over (\d)\.5$/))) {
+    const have = k[1] === m.h ? s.h : s.a;
+    need = +k[2] + 1 - (have || 0);
+    txt = need <= 0 ? "✓ done" : k[1] + " needs " + pl(need, "goal");
+    done = need <= 0;
+  } else if ((k = n.match(/^Over (\d+)\.5 yellows$/))) {
+    need = +k[1] + 1 - y;
+    txt = need <= 0 ? "✓ done" : "needs " + pl(need, "yellow card");
+    done = need <= 0;
+  } else if ((k = n.match(/^Under (\d+)\.5 yellows$/))) {
+    const room = +k[1] - y;
+    txt = room < 0 ? "✗ too many cards" : room === 0 ? "no more cards allowed" : "can take " + pl(room, "card");
+  } else if ((k = n.match(/^(.+) (win|or draw)$/))) {
+    const me = k[1] === m.h ? s.h : s.a,
+      op = k[1] === m.h ? s.a : s.h,
+      d = me - op;
+    txt = k[2] === "win" ? (d > 0 ? "winning now" : d === 0 ? "needs 1 goal" : "needs " + (1 - d) + " goals") : d >= 0 ? (d > 0 ? "winning now" : "level now ✓") : "needs " + -d + " goal" + (-d > 1 ? "s" : "");
+  } else if (n === "Draw") txt = g === 0 || s.h === s.a ? "level now ✓" : "needs " + Math.abs(s.h - s.a) + " goal";
+  else if (n === "No draw") txt = s.h !== s.a ? "not level now ✓" : "needs 1 goal";
+  else return null;
+  return { txt, done, now: { g, y }, final: s.state === "post" };
+}
+// ---- what wins for you: your finished bets grouped by bet type (keep what works, drop what doesn't) ----
+function betKind(n) {
+  if (/ yellows$/.test(n)) return "Yellow cards";
+  if (n === "Draw") return "X (draw)";
+  if (n === "No draw") return "12";
+  if (/ win$/.test(n)) return "W1 / W2";
+  if (/ or draw$/.test(n)) return "1X / X2";
+  if (/^Over \d/.test(n)) return "Total Over";
+  if (/^Under \d/.test(n)) return "Total Under";
+  if (/ over \d/.test(n)) return "Team total";
+  return "Other";
+}
+function myBetStats() {
+  const G = {};
+  MY.filter((t) => t.real || !t.preset).forEach((t) =>
+    t.legs.forEach((l) => {
+      const s = S(l.eid);
+      if (!s || s.state !== "post") return;
+      const ls = legState(l);
+      if (ls.p !== 1 && ls.p !== 0) return;
+      const k = betKind(l.n);
+      const g = (G[k] = G[k] || { k, n: 0, w: 0 });
+      g.n++;
+      g.w += ls.p;
+    }),
+  );
+  return Object.values(G).sort((a, b) => b.n - a.n);
+}
 // ---- best picks per team (for people building their own tickets) ----
 function bestPicks(eid) {
   const m = byE[eid];
@@ -1587,34 +1713,16 @@ function bestPicks(eid) {
   const L = markets(m);
   const P = (n) => {
     const x = L.find((k) => k.n === n);
-    return x ? { n, p: frac(R, x.f) } : null;
+    return x ? { n, p: frac(R, x.f), v: valueOf(m, n, frac(R, x.f)) } : null;
   };
   const alive = (x) => x && x.p > 0.02 && x.p < 0.995;
   const team = (t) =>
-    [
-      t + " win",
-      t + " or draw",
-      t + " draw no bet",
-      t + " wins by 2+",
-      t + " win to nil",
-      t + " over 0.5",
-      t + " over 1.5",
-      t + " more corners",
-    ]
+    [t + " win", t + " or draw", t + " over 0.5", t + " over 1.5"]
       .map(P)
       .filter(alive)
       .sort((a, b) => b.p - a.p)
       .slice(0, 3);
-  const match = [
-    "Over 1.5",
-    "Over 2.5",
-    "Under 2.5",
-    "Under 3.5",
-    "Under 4.5",
-    "1st half over 0.5",
-    "Goal in both halves",
-    "Half-time: draw",
-  ]
+  const match = ["Over 1.5", "Over 2.5", "Under 2.5", "Under 3.5", "Under 4.5", "Draw", "Over 2.5 yellows", "Over 3.5 yellows", "Under 4.5 yellows", "Under 5.5 yellows"]
     .map(P)
     .filter((x) => alive(x) && x.p >= 0.5)
     .sort((a, b) => b.p - a.p)
@@ -1651,11 +1759,9 @@ function signal(t, P, E, res, legs) {
   if (res === "WON") return { cls: "won", big: "WON", txt: `Pays CLP ${odds ? Math.round(stake * odds).toLocaleString("en-US") : "–"}` };
   if (res === "LOST") return { cls: "lost", big: "LOST", txt: "One bet lost. Nothing to take." };
   if (!started) {
-    const edge = E != null && odds ? E - 1 : null;
-    const k = edge != null && edge > 0 && odds > 1 ? Math.min(0.05, (0.25 * edge) / (odds - 1)) * BANK : 0;
     return { cls: "pre", big: "NOT STARTED", txt: "" };
   }
-  if (!odds) return { cls: "pre", big: "TYPE ODDS", txt: "Type the bookie odds on this ticket to see what it is worth." };
+  if (!odds) return { cls: "pre", big: "TYPE ODDS", txt: "Type the " + BOOK + " odds on this ticket to see what it is worth." };
   const o = parseFloat(CO[t.id]);
   if (o > 0 && fair) {
     const pay = stake * odds,
@@ -1663,7 +1769,7 @@ function signal(t, P, E, res, legs) {
       B = Math.max(BANK, stake * 2),
       CE = Math.exp(q * Math.log(B + pay) + (1 - q) * Math.log(B)) - B;
     if (o >= fair)
-      return { cls: "cash", big: "TAKE THE MONEY", txt: `Take it: the bookie pays more than your ticket is worth (worth ${clp0(fair)}).` };
+      return { cls: "cash", big: "TAKE THE MONEY", txt: `Take it: ${BOOK} pays more than your ticket is worth (worth ${clp0(fair)}).` };
     if (o >= CE)
       return {
         cls: "close",
@@ -1675,7 +1781,7 @@ function signal(t, P, E, res, legs) {
   return {
     cls: "hold",
     big: "KEEP IT",
-    txt: `Keep it. Only take money if the bookie offers ${fair ? clp0(fair) : "–"} or more${left === 1 ? " (1 bet left)" : ""}.`,
+    txt: `Keep it. Only take money if ${BOOK} offers ${fair ? clp0(fair) : "–"} or more${left === 1 ? " (1 bet left)" : ""}.`,
   };
 }
 const clp0 = (x) => "CLP " + Math.round(x).toLocaleString("en-US");
@@ -1715,21 +1821,7 @@ function clvOf(t) {
 }
 const SAFE_STYLE = { ultra: [0.85, 0.94, "Ultra safe"], safe: [0.8, 0.9, "Safe"], fire: [0.7, 0.82, "Fire (bigger odds)"] };
 function safeCands(m) {
-  return [
-    `${m.h} or draw`,
-    `${m.a} or draw`,
-    "Over 0.5",
-    "Over 1.5",
-    "Over 2.5",
-    "Under 2.5",
-    "Under 3.5",
-    "Under 4.5",
-    "Both teams score",
-    `${m.h} win`,
-    `${m.a} win`,
-    "Over 7.5 corners",
-    "Under 11.5 corners",
-  ];
+  return [`${m.h} or draw`, `${m.a} or draw`, "Over 0.5", "Over 1.5", "Over 2.5", "Under 2.5", "Under 3.5", "Under 4.5", `${m.h} win`, `${m.a} win`, `${m.h} over 0.5`, `${m.a} over 0.5`, "Over 2.5 yellows", "Under 5.5 yellows"];
 }
 const FORM = {};
 async function loadForm(m) {
@@ -1813,6 +1905,7 @@ function pingNew(eid) {
 function liveBets(m, s) {
   const R = simOf(m.eid),
     t = s.h + s.a,
+    y = (s.yh || 0) + (s.ya || 0),
     lo = LO[m.eid];
   const live = lo && lo.live && Date.now() - lo.t < 360000;
   const L = markets(m);
@@ -1821,25 +1914,51 @@ function liveBets(m, s) {
     `Under ${t + 0.5}`,
     `Over ${t + 1.5}`,
     `Under ${t + 1.5}`,
-    `Next goal: ${m.h}`,
-    `Next goal: ${m.a}`,
-    "No more goals",
+    `Under ${t + 2.5}`,
     `${m.h} win`,
     "Draw",
     `${m.a} win`,
     `${m.h} or draw`,
     `${m.a} or draw`,
+    `${m.h} over ${(s.h || 0) + 0.5}`,
+    `${m.a} over ${(s.a || 0) + 0.5}`,
+    `Over ${y + 0.5} yellows`,
+    `Over ${y + 1.5} yellows`,
+    `Under ${y + 1.5} yellows`,
+    `Under ${y + 2.5} yellows`,
   ]);
-  if (s.h === 0 || s.a === 0) want.add("Both teams score");
-  return L.filter((x) => want.has(x.n))
+  return L.filter((x) => want.has(x.n) && shown(x.n))
     .map((x) => {
       const p = frac(R, x.f);
       const od = live && x.k ? lo.o[x.k] : null;
       const ev = od ? p * od - 1 : null;
-      return { n: x.n, k: x.k, p, fair: 1 / Math.max(p, 1e-6), min: 1.05 / Math.max(p, 1e-6), od, ev };
+      return { n: x.n, k: x.k, p, fair: 1 / Math.max(p, 1e-6), min: 1.05 / Math.max(p, 1e-6), od, ev, need: needInfo(m.eid, x.n) };
     })
     .filter((b) => b.p > 0.03 && b.p < 0.97)
     .sort((a, b) => (b.ev != null ? b.ev : -1) - (a.ev != null ? a.ev : -1) || Math.abs(a.p - 0.55) - Math.abs(b.p - 0.55));
+}
+// "best odds now": bets we still like (our % 55%+), highest odds first; 1win odds shown when we have them
+function bestOddsNow(eid, k = 5) {
+  const m = byE[eid],
+    s = S(eid);
+  if (!m || !s) return [];
+  let L;
+  if (s.state === "in") L = liveBets(m, s);
+  else {
+    const R = simOf(eid);
+    L = marketsShown(m).map((x) => {
+      const p = frac(R, x.f),
+        v = valueOf(m, x.n, p);
+      return { n: x.n, p, fair: 1 / Math.max(p, 1e-6), od: v && v.odds, ev: v && v.ev != null ? v.ev - 1 : null };
+    });
+  }
+  // highest odds first, at most 2 of one kind (1X2 / goals / cards) so the list stays varied
+  const kind = (n) => (/yellows$/.test(n) ? "c" : /^(Over|Under)| over /.test(n) ? "g" : "r");
+  const cnt = {};
+  return L.filter((b) => b.p >= 0.55 && b.p <= 0.92)
+    .sort((a, b) => (b.od || b.fair) - (a.od || a.fair))
+    .filter((b) => (cnt[kind(b.n)] = (cnt[kind(b.n)] || 0) + 1) <= 2)
+    .slice(0, k);
 }
 const PREF = Object.assign(
   { pitch: "compact", strip: "all", mom: true, playing: true, bets: true, pMk: true, pSt: true, pEv: true, pLu: true, pCx: true },
@@ -1906,16 +2025,11 @@ function setLam(m, lh, la, note) {
   delete SIMS[m.eid];
 }
 function applyFreshOdds(m) {
+  // fresh bookmaker prices are only stored for comparison ("1win %"); our own % is never mixed with them
   const lo = LO[m.eid];
   if (!lo || S(m.eid).state !== "pre") return false;
-  const L = priorFrom(lo.o);
-  if (!L) return false;
-  const mod = m.lamModel;
-  const lh = mod ? 0.85 * L[0] + 0.15 * mod[0] : L[0],
-    la = mod ? 0.85 * L[1] + 0.15 * mod[1] : L[1];
-  if (!m.lam0) m.lam0 = m.lam.slice();
-  setLam(m, lh, la, "updated with bookmaker prices from " + new Date(lo.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-  return true;
+  m.odds = Object.assign({}, m.odds || {}, lo.o);
+  return false;
 }
 const avgR = (ps) => {
   const r = ps
@@ -2341,4 +2455,18 @@ export {
   pollBoard,
   loadLineup,
   clamp,
+  shown,
+  marketsShown,
+  bookOdds,
+  valueOf,
+  strengthOf,
+  ticketStrength,
+  protection,
+  needInfo,
+  bestOddsNow,
+  nextYmd,
+  setBook,
+  bookName,
+  myBetStats,
+  betKind,
 };

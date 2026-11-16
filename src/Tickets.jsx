@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import * as M from './engine.js'
+import { Vs, Strength } from './Bits.jsx'
 const { E } = M
 const pct = M.pct
 const clp = x => 'CLP ' + Math.round(x).toLocaleString('en-US')
@@ -7,8 +8,8 @@ const clp = x => 'CLP ' + Math.round(x).toLocaleString('en-US')
 /* team chances line for one match (live when the match is on) */
 export function MatchLine({ eid }) {
   const m = M.byE[eid]; if (!m) return null; const R = M.simOf(eid); const f = fn => pct(M.frac(R, fn)); const T = (R, n) => R.GH[n] + R.GA[n]
-  return <div className="mline"><span>{m.hA} <b>{f((R, n) => R.GH[n] > R.GA[n])}</b></span><span>Draw <b>{f((R, n) => R.GH[n] === R.GA[n])}</b></span><span>{m.aA} <b>{f((R, n) => R.GH[n] < R.GA[n])}</b></span>
-    <span>2+ goals <b>{f((R, n) => T(R, n) > 1.5)}</b></span><span>3+ goals <b>{f((R, n) => T(R, n) > 2.5)}</b></span><span>4+ goals <b>{f((R, n) => T(R, n) > 3.5)}</b></span><span>Both score <b>{f((R, n) => R.GH[n] > 0 && R.GA[n] > 0)}</b></span><span>10+ corners <b>{f((R, n) => R.CH[n] + R.CA[n] > 9.5)}</b></span></div>
+  return <div className="mline"><span>W1 {m.hA} <b>{f((R, n) => R.GH[n] > R.GA[n])}</b></span><span>X <b>{f((R, n) => R.GH[n] === R.GA[n])}</b></span><span>W2 {m.aA} <b>{f((R, n) => R.GH[n] < R.GA[n])}</b></span>
+    <span>Over 1.5 <b>{f((R, n) => T(R, n) > 1.5)}</b></span><span>Over 2.5 <b>{f((R, n) => T(R, n) > 2.5)}</b></span><span>Under 3.5 <b>{f((R, n) => T(R, n) < 3.5)}</b></span><span>Cards Over 3.5 <b>{f((R, n) => R.Y[n] > 3.5)}</b></span></div>
 }
 
 export function Stars({ n }) { const k = M.predictability(n); return <span className={'stars s' + k} title={['', 'Hard to predict', 'Medium', 'Easy to predict'][k]}>{'★'.repeat(k)}<span className="st-off">{'★'.repeat(3 - k)}</span></span> }
@@ -16,9 +17,9 @@ export function chanceCls(p) { return p >= .7 ? 'hi' : p >= .45 ? 'md' : 'lo' }
 export function BestPicks({ eid, compact }) {
   const b = M.bestPicks(eid); const m = M.byE[eid]; if (!b || b.done) return null
   const Row = ({ x }) => { const on = M.inDraft(eid, x.n); return <button className={'bp' + (on ? ' on' : '')} onClick={e => { e.stopPropagation(); M.addPick(eid, x.n) }} title={on ? 'Remove from my new ticket' : 'Add to my new ticket'}>
-    <span className="bn">{M.nice(x.n).replace(m.h, m.hA).replace(m.a, m.aA)} <Stars n={x.n} /></span><b className={'pchip ' + chanceCls(x.p)}>{pct(x.p)}</b><span className="bplus">{on ? '✓' : '＋'}</span></button> }
+    <span className="bn">{M.nice(x.n, m).replace(m.h, m.hA).replace(m.a, m.aA)} <Stars n={x.n} />{!compact && <Vs v={x.v} />}</span><b className={'pchip ' + chanceCls(x.p)}>{pct(x.p)}</b><span className="bplus">{on ? '✓' : '＋'}</span></button> }
   if (compact) { const top = [b.h[0], b.a[0], b.x[0]].filter(Boolean); return <div className="bpc">{top.map(x => <Row key={x.n} x={x} />)}</div> }
-  return <div className="card bestp"><div className="bph"><h3>{b.live ? 'Best % right now' : 'Best % for each team'}</h3><span className="sub">Tap a bet to add it to your new ticket</span></div>
+  return <div className="card bestp"><div className="bph"><h3>{b.live ? 'Best % right now' : 'Best % for each team'}</h3><span className="sub">Our own % · tap a bet to add it to your ticket</span></div>
     <div className="bpcols">
       <div><div className="bpt">{m.h}</div>{b.h.map(x => <Row key={x.n} x={x} />)}</div>
       <div><div className="bpt">{m.a}</div>{b.a.map(x => <Row key={x.n} x={x} />)}</div>
@@ -26,14 +27,14 @@ export function BestPicks({ eid, compact }) {
 }
 export function LiveAdvisor({ eid, compact, onOpen }) {
   const a = M.liveAdvice(eid); if (!a) return null; const m = M.byE[eid]
-  const Pk = ({ x }) => { const on = M.inDraft(eid, x.n); return <div className="la-pick"><div className="la-pl"><b>{M.nice(x.n).replace(m.h, m.hA).replace(m.a, m.aA)}</b> <Stars n={x.n} />{x.why && <span className="sub"> · {x.why}</span>}</div>
-    <b className={'pchip ' + chanceCls(x.p)}>{pct(x.p)}</b><span className="la-min">bet if the bookie pays <b>{x.min.toFixed(2)}+</b></span><button className="tp-add" onClick={e => { e.stopPropagation(); M.addPick(eid, x.n) }}>{on ? '✓' : '＋'}</button></div> }
+  const Pk = ({ x }) => { const on = M.inDraft(eid, x.n); return <div className="la-pick"><div className="la-pl"><b>{M.nice(x.n, m).replace(m.h, m.hA).replace(m.a, m.aA)}</b> <Stars n={x.n} />{x.why && <span className="sub"> · {x.why}</span>}{x.need && <span className="need"> · {x.need.txt}</span>}</div>
+    <b className={'pchip ' + chanceCls(x.p)}>{pct(x.p)}</b><span className="la-min">bet if {M.bookName()} pays <b>{x.min.toFixed(2)}+</b></span><button className="tp-add" onClick={e => { e.stopPropagation(); M.addPick(eid, x.n) }}>{on ? '✓' : '＋'}</button></div> }
   if (compact) return <div className="la-c" onClick={onOpen}><div className="la-ch"><span className="live-dot" /><b>{m.hA} {M.S(eid).h}–{M.S(eid).a} {m.aA}</b><span className="sub">{M.S(eid).clock}</span></div>
     <div className="sub la-why">{a.lines[1]}</div>{a.picks[0] ? <Pk x={a.picks[0]} /> : <div className="sub">No strong live bet right now.</div>}</div>
   return <div className="card ladv"><div className="la-h"><h3><span className="live-dot" /> Live advisor</h3><span className="sub">updates every 30 s</span></div>
     <ul className="la-lines">{a.lines.map((l, i) => <li key={i}>{l}</li>)}</ul>
     <div className="la-t">Best live bets now</div>{a.picks.length ? a.picks.map(x => <Pk key={x.n} x={x} />) : <p className="sub">No strong live bet right now – wait a few minutes.</p>}
-    <div className="sub" style={{ marginTop: 6 }}>Only bet if the bookie’s live odds are at least the number shown. Live odds move fast.</div></div>
+    <div className="sub" style={{ marginTop: 6 }}>Only bet if {M.bookName()}’s live odds are at least the number shown. Live odds move fast.</div></div>
 }
 
 export function DraftBar({ openBuilder }) {
@@ -50,11 +51,27 @@ function Tools({ t, legs, fair, stake, odds }) {
   else { const l = open[0], h = parseFloat(hg)
     if (!(h > 1)) hedge = <div className="sub">Last open bet: <b>{l.m.hA}–{l.m.aA} {l.lab}</b>. Type the odds for it <i>not</i> happening.</div>
     else { const H = W / h, lock = W - H, cost = H * (1 - (1 - (l.p || 0)) * h)
-      hedge = <div>Bet <b>{clp(H)}</b> on the opposite at {h.toFixed(2)}. Whatever happens you end with <b>{clp(lock)}</b> (profit {clp(lock - stake)}). Compared with {est ? 'an estimated' : 'the bookie’s'} cash-out of {clp(O)}: the hedge is {lock >= O ? <span className="ok">better by {clp(lock - O)}</span> : <span className="ko">worse by {clp(O - lock)}</span>}. The hedge bet costs about {clp(Math.max(0, cost))} on average.</div> } }
+      hedge = <div>Bet <b>{clp(H)}</b> on the opposite at {h.toFixed(2)}. Whatever happens you end with <b>{clp(lock)}</b> (profit {clp(lock - stake)}). Compared with {est ? 'an estimated' : M.bookName() + '’s'} cash-out of {clp(O)}: the hedge is {lock >= O ? <span className="ok">better by {clp(lock - O)}</span> : <span className="ko">worse by {clp(O - lock)}</span>}. The hedge bet costs about {clp(Math.max(0, cost))} on average.</div> } }
   return <details className="tools"><summary>Take some money now (advanced)</summary>
     <div className="tl"><div className="sub">Take part of the money now, keep the rest running</div><input type="range" min="0" max="100" step="10" value={pc} onChange={e => setPc(+e.target.value)} />
-      <div>Cash out <b>{pc}%</b>: get {clp(f * O)} now{est ? ' (if the bookie offers ~90% of fair)' : ''}. If the ticket then wins you also get {clp((1 - f) * W)}; if it loses you keep {clp(f * O)}. Average {clp(f * O + (1 - f) * fair)}, {clp(Math.abs(f * (fair - O)))} {O < fair ? 'less' : 'more'} than holding.</div></div>
+      <div>Cash out <b>{pc}%</b>: get {clp(f * O)} now{est ? ' (if ' + M.bookName() + ' offers about 90%)' : ''}. If the ticket then wins you also get {clp((1 - f) * W)}; if it loses you keep {clp(f * O)}. Average {clp(f * O + (1 - f) * fair)}, {clp(Math.abs(f * (fair - O)))} {O < fair ? 'less' : 'more'} than holding.</div></div>
     <div className="tl"><div className="sub">Lock in money: bet against your last open bet</div><input type="number" step="0.01" min="1.01" placeholder="odds for the opposite" value={hg} onChange={e => setHg(e.target.value)} />{hedge}</div></details>
+}
+
+/* protection for a placed ticket: a small cover bet that gives the stake back if the weakest bet fails */
+function Protect({ t }) {
+  const [op, setOp] = useState(false); const pr = M.protection(t); if (!pr || !pr.weakest || pr.weakest.p >= .8 || !pr.cover) return null
+  const m = pr.m, w = pr.weakest, c = pr.cover; const B = M.bookName()
+  return <div className={'protect' + (op ? ' open' : '')}><button className="pr-h" onClick={() => setOp(!op)}>🛡 Protect this ticket <span className="sub">weakest bet: {M.nice(w.n, m)} {pct(w.p)}</span><span className="pr-ar">{op ? '▴' : '▾'}</span></button>
+    {op && <div className="pr-b"><div className="pr-o"><b>Cover bet</b><div>Bet <b>CLP {c.stake.toLocaleString('en-US')}</b> on <b>{M.nice(c.n, m)}</b> ({pct(c.p)}) if {B} pays about <b>{c.o.toFixed(2)}</b>{c.oursOnly ? ' or more' : ''}. If {M.nice(w.n, m)} fails, this gives your ticket money back.</div>
+      {!c.worth ? <div className="ko">Not worth it here: the cover eats most of the win.</div> : <div className="sub">If everything goes well you win a bit less, but a loss on the weak bet no longer costs you.</div>}</div></div>}</div>
+}
+/* in the ticket builder: swap the weakest bet for a safer one in the same game */
+function SaferSwap({ D }) {
+  const pr = D.length ? M.protection({ id: 'draft', stake: E.STAKE, legs: D }) : null; if (!pr || !pr.swap || pr.weakest.p >= .75 || pr.swap.p > .99) return null
+  const m = pr.m, w = pr.weakest
+  return <div className="protect open"><div className="pr-b" style={{ paddingTop: 10 }}><div className="pr-o">🛡 Weakest bet: <b>{M.nice(w.n, m)}</b> ({pct(w.p)}). Safer: <b>{M.nice(pr.swap.n, m)}</b> ({pct(pr.swap.p)}) – pays a bit less, wins more often.
+    <div><button className="linkb" onClick={() => M.setDraft(D.map(l => l.eid === w.eid && l.n === w.n ? { ...l, n: pr.swap.n, o: null } : l))}>Swap it</button></div></div></div></div>
 }
 
 function Exposure() {
@@ -75,8 +92,8 @@ function SafeBuilder({ onUse }) {
       <label className="sub">How many bets<input className="inp" type="number" min="2" max="12" value={n} onChange={e => setN(+e.target.value || 2)} style={{ width: 80 }} /></label></div>
     {!L.length ? <p className="empty">No matches still to play for this competition and date.</p> : <>
       <div className="sfsum" style={{ marginTop: 10 }}><span>Total odds about <b className="orb">{est.toFixed(2)}</b></span></div>
-      {L.map(x => <div key={x.eid} className="leg2"><span className="i sub">○</span><div className="lt"><div>{x.m.hA}–{x.m.aA} · <b>{x.n}</b></div><MatchLine eid={x.eid} /></div></div>)}
-      <p className="sub" style={{ lineHeight: 1.5 }}>Each pick costs a small bookmaker margin, so long tickets of very safe picks pay little. Check the real bookie odds before playing.</p>
+      {L.map(x => <div key={x.eid} className="leg2"><span className="i sub">○</span><div className="lt"><div>{x.m.hA}–{x.m.aA} · <b>{M.nice(x.n, x.m)}</b></div><MatchLine eid={x.eid} /></div></div>)}
+      <p className="sub" style={{ lineHeight: 1.5 }}>Very safe bets pay little. Check {M.bookName()}’s odds before playing.</p>
       <button className="cta" onClick={() => onUse(L.map(x => ({ eid: x.eid, lg: x.lg, date: x.date, n: x.n, o: null })))}>Use these picks</button></>}</details>
 }
 
@@ -91,10 +108,10 @@ export function Builder({ onClose }) {
   const sameGroup = (a, b) => { const g = x => /win$|^Draw$/.test(x) ? 'res' : /^(Over|Under) (\d\.\d)$/.test(x) ? 'ou' + x.split(' ')[1] : /both|Not both/i.test(x) ? 'btts' : x; return g(a) === g(b) }
   let sections = []
   if (m) { const R = M.simOf(eid); const P = {}; M.markets(m).forEach(x => P[x.n] = { p: M.frac(R, x.f) + (x.pu ? M.frac(R, x.pu) : 0), g: x.g })
-    sections = [['Result', [`${m.h} win`, 'Draw', `${m.a} win`]], ['Double chance', [`${m.h} or draw`, `${m.a} or draw`, 'No draw']], ['Win by 2+ / win to nil', [`${m.h} wins by 2+`, `${m.a} wins by 2+`, `${m.h} win to nil`, `${m.a} win to nil`]], ['Goals', ['Over 1.5', 'Under 1.5', 'Over 2.5', 'Under 2.5', 'Over 3.5', 'Under 3.5']], ['Both teams score', ['Both teams score', 'Not both score']], ['Corners', ['Over 8.5 corners', 'Under 8.5 corners', 'Over 9.5 corners', 'Under 9.5 corners']]]
-    if (more) { const G = {}; M.markets(m).forEach(x => (G[x.g] = G[x.g] || []).push(x.n)); sections = Object.entries(G) }
+    sections = [['1X2', [`${m.h} win`, 'Draw', `${m.a} win`]], ['Double chance', [`${m.h} or draw`, `${m.a} or draw`, 'No draw']], ['Total goals', ['Over 1.5', 'Under 1.5', 'Over 2.5', 'Under 2.5', 'Over 3.5', 'Under 3.5']], ['Team total', [`${m.h} over 0.5`, `${m.h} over 1.5`, `${m.a} over 0.5`, `${m.a} over 1.5`]], ['Yellow cards', ['Over 3.5 yellows', 'Under 3.5 yellows', 'Over 4.5 yellows', 'Under 4.5 yellows']]]
+    if (more) { const G = {}; M.marketsShown(m).forEach(x => (G[x.g] = G[x.g] || []).push(x.n)); sections = Object.entries(G) }
     sections = sections.map(([g, ns]) => [g, ns.filter(n => P[n]).map(n => [n, P[n].p])]) }
-  const save = () => { const T = parseFloat(tot), S = parseFloat(st); if (!D.length) return setErr('Tap at least one bet.'); if (!(T > 1)) return setErr('Type the total odds from the bookie.'); if (!(S > 0)) return setErr('Type how much you bet.')
+  const save = () => { const T = parseFloat(tot), S = parseFloat(st); if (!D.length) return setErr('Tap at least one bet.'); if (!(T > 1)) return setErr('Type the total odds from ' + M.bookName() + '.'); if (!(S > 0)) return setErr('Type how much you bet.')
     const t = { id: 'u' + Date.now(), n: 'My ticket ' + (E.MY.filter(x => !x.preset).length + 1) + ' (' + D.length + ' bets)', odds: T, stake: S, legs: D.slice() }; M.addTicket(t); M.setDraft([]); M.alertMsg('good', 'Saved. We’ll follow it live.'); onClose() }
   return <div className="modalbg" onClick={e => { if (e.target === e.currentTarget) onClose() }}><div className="slipwrap card">
     <button className="x" onClick={onClose} aria-label="Close">✕</button>
@@ -103,11 +120,11 @@ export function Builder({ onClose }) {
       <div className="sw-list">{ids.length ? ids.map(e => { const x = M.byE[e], s = M.S(e); const n = D.filter(l => l.eid === e).length; return <button key={e} className={'mrow' + (e === eid ? ' on' : '')} onClick={() => { setEid(e); setMore(false) }}>
         <span className="mt">{s.state === 'in' ? <><span className="live-dot" />{s.clock}</> : s.state === 'post' ? 'FT' : s.date ? new Date(s.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span><span className="mn"><span>{x.h}</span><span>{x.a}</span></span><span className="ms">{s.state !== 'pre' && <><b>{s.h}</b><b>{s.a}</b></>}</span>{n ? <span className="cnt2">{n}</span> : <span />}</button> }) : <p className="empty">No matches on this date.</p>}</div></div>
     <div className="sw-m"><div className="sw-h">2 · Tap your bets {m && <span className="sub">{m.h} v {m.a}</span>}</div>
-      {m ? <>{sections.map(([g, ns]) => ns.length ? <div key={g} className="pgrp"><div className="pg">{g}</div><div className="pbtns">{ns.map(([n, p]) => <button key={n} className={'pbtn' + (has(n) ? ' on' : '')} onClick={() => toggle(n)}><span>{M.nice(n)} <Stars n={n} /></span><b>{pct(p)}</b></button>)}</div></div> : null)}
-        <button className="linkb" onClick={() => setMore(!more)}>{more ? '← Main bets only' : 'More bets (exact score, players, cards, halves…) →'}</button></> : <p className="empty">Choose a match on the left.</p>}</div>
+      {m ? <>{sections.map(([g, ns]) => ns.length ? <div key={g} className="pgrp"><div className="pg">{g}</div><div className="pbtns">{ns.map(([n, p]) => <button key={n} className={'pbtn' + (has(n) ? ' on' : '')} onClick={() => toggle(n)}><span>{M.nice(n, m)} <Stars n={n} /></span><b>{pct(p)}</b></button>)}</div></div> : null)}
+        <button className="linkb" onClick={() => setMore(!more)}>{more ? '← Main bets only' : 'All lines (more Over / Under) →'}</button></> : <p className="empty">Choose a match on the left.</p>}</div>
     <div className="sw-r"><div className="sw-h">3 · Your ticket</div>
       {D.length ? D.map((l, i) => { const x = M.byE[l.eid]; return <div key={i} className="slipleg"><div><div className="sub">{x ? x.hA + ' – ' + x.aA : ''}</div><b>{M.nice(l.n)}</b></div>{(() => { const ls = M.legState(l); return ls.p != null ? <b className={'pchip ' + chanceCls(ls.p)} style={{ marginLeft: 'auto', marginRight: 8 }}>{pct(ls.p)}</b> : null })()}<button className="rm" aria-label="Remove" onClick={() => M.setDraft(D.filter((_, j) => j !== i))}>✕</button></div> }) : <p className="empty">Your bets show up here.</p>}
-      <label className="sl">Total odds (from your bookie ticket)<input className="inp big" type="number" step="0.01" min="1.01" placeholder="e.g. 5.40" value={tot} onChange={e => setTot(e.target.value)} /></label>
+      <label className="sl">Total odds (from your {M.bookName()} ticket)<input className="inp big" type="number" step="0.01" min="1.01" placeholder="e.g. 5.40" value={tot} onChange={e => setTot(e.target.value)} /></label>
       <label className="sl">How much you bet (CLP)<input className="inp big" type="number" step="1000" min="100" value={st} onChange={e => setSt(e.target.value)} /></label>
       {parseFloat(tot) > 1 && parseFloat(st) > 0 && <div className="sub" style={{ margin: '6px 0' }}>You can win <b style={{ color: 'var(--tx)' }}>{clp(parseFloat(tot) * parseFloat(st))}</b></div>}
       <Advice D={D} tot={parseFloat(tot)} st={parseFloat(st)} setSt={setSt} />
@@ -119,8 +136,8 @@ function ResultsLog() {
   const L = E.LOG; const [c, setC] = useState(false)
   if (!L.length) return <p className="empty">Finished tickets show here with win or loss. Saved on this device only.</p>
   const w = L.filter(x => x.res === 'WON').length; const prof = L.reduce((a, x) => a + (x.odds ? (x.res === 'WON' ? x.stake * (x.odds - 1) : -x.stake) : 0), 0); const cl = L.filter(x => x.clv != null); const avg = cl.length ? cl.reduce((a, x) => a + x.clv, 0) / cl.length : null
-  return <div><div className="big3" style={{ marginBottom: 10 }}><div><div className="v">{w}/{L.length}</div><div className="l">tickets won</div></div><div><div className={'v ' + (prof >= 0 ? 'ok' : 'ko')}>{prof >= 0 ? '+' : ''}{Math.round(prof).toLocaleString('en-US')}</div><div className="l">CLP won or lost</div></div><div><div className={'v ' + (avg == null ? '' : avg >= 0 ? 'ok' : 'ko')}>{avg == null ? '–' : (avg >= 0 ? '+' : '') + (avg * 100).toFixed(1) + '%'}</div><div className="l">price vs final bookie price</div></div></div>
-    {L.map((x, i) => <div key={i} className="ev"><span className="c">{x.d.slice(5)}</span><span className={x.res === 'WON' ? 'ok' : 'ko'}>{x.res}</span><span>{x.n}{x.odds ? ' @ ' + x.odds.toFixed(2) : ''}{x.clv != null ? ' · CLV ' + (x.clv >= 0 ? '+' : '') + (x.clv * 100).toFixed(1) + '%' : ''}</span></div>)}
+  return <div><div className="big3" style={{ marginBottom: 10 }}><div><div className="v">{w}/{L.length}</div><div className="l">tickets won</div></div><div><div className={'v ' + (prof >= 0 ? 'ok' : 'ko')}>{prof >= 0 ? '+' : ''}{Math.round(prof).toLocaleString('en-US')}</div><div className="l">CLP won or lost</div></div><div><div className={'v ' + (avg == null ? '' : avg >= 0 ? 'ok' : 'ko')}>{avg == null ? '–' : (avg >= 0 ? '+' : '') + (avg * 100).toFixed(1) + '%'}</div><div className="l">your odds vs {M.bookName()}’s last odds</div></div></div>
+    {L.map((x, i) => <div key={i} className="ev"><span className="c">{x.d.slice(5)}</span><span className={x.res === 'WON' ? 'ok' : 'ko'}>{x.res}</span><span>{x.n}{x.odds ? ' @ ' + x.odds.toFixed(2) : ''}{x.clv != null ? ' · vs last odds ' + (x.clv >= 0 ? '+' : '') + (x.clv * 100).toFixed(1) + '%' : ''}</span></div>)}
     <div className="row2" style={{ marginTop: 8 }}><button onClick={() => { if (c) { E.LOG = []; setC(false) } else setC(true) }}>{c ? 'Click again to clear' : 'Clear log'}</button></div></div>
 }
 
@@ -134,7 +151,7 @@ function BankSim() {
       <p className="sub" style={{ lineHeight: 1.5 }}>{res.ev >= 0 ? '+' : ''}{(res.ev * 100).toFixed(1)}% per ticket on average. Most likely you end between {clp(res.lo)} and {clp(res.hi)}.</p></>}</div>
 }
 
-const LOGO1W = <span className="w1">bookie</span>
+const Logo1w = () => <span className="w1">{M.bookName()}</span>
 function legRowState(l) { return !l.s ? 'wait' : l.s.state !== 'pre' && l.p === 1 ? 'won' : l.s.state !== 'pre' && l.p === 0 ? 'lost' : l.s.state === 'in' ? 'live' : 'wait' }
 const ICON = { won: '✓', lost: '✕', live: '●', wait: '' }
 
@@ -153,20 +170,22 @@ function TicketStub({ t, i }) {
   const no = t.real ? (t.n.match(/#(\d+)/) || [])[1] : null
   return <article className={'stub s-' + cls} style={{ animationDelay: i * 80 + 'ms' }}>
     <div className="stub-top">
-      <div className="stub-id">{t.real ? LOGO1W : <span className="w1 mine">MINE</span>}<div><div className="stub-n">{no ? 'Ticket #' + no : t.n}</div><div className="sub">{legs.length} bets · odds {odds ? odds.toFixed(2) : '–'} · you bet {clp(stake)}</div></div></div>
+      <div className="stub-id">{t.real ? <Logo1w /> : <span className="w1 mine">MINE</span>}<div><div className="stub-n">{no ? 'Ticket #' + no : t.n}</div><div className="sub">{legs.length} bets · odds {odds ? odds.toFixed(2) : '–'} · you bet {clp(stake)}</div></div></div>
       <div className="stub-win"><div className="sub">{res === 'WON' ? 'You won' : res === 'LOST' ? 'Could have won' : 'You can win'}</div><div className="big">{odds ? clp(stake * odds) : '–'}</div></div>
     </div>
+    {!res && <Strength st={M.ticketStrength(t)} small />}
     <div className="stub-prog"><div className="seg">{st.map((x, j) => <i key={j} className={x} style={{ animationDelay: (i * 80 + j * 45) + 'ms' }} />)}</div><span className="sub">{nWon}/{legs.length} won{nLive ? ` · ${nLive} live` : ''}</span></div>
     <div className="stub-legs">{shown.map(j => { const l = legs[j], s = l.s, x = st[j]; const m = l.m
       const sc = !s ? '' : s.state === 'pre' ? (s.date ? new Date(s.date).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '') : `${s.h}-${s.a}${s.state === 'in' ? ' · ' + s.clock : ' · final'}`
-      return <div key={j} className={'leg ' + x}><span className="li">{ICON[x]}</span><div className="lt"><b>{M.nice(l.lab)}</b><span className="sub">{m ? m.h + ' v ' + m.a : 'loading…'}</span>{open && <MatchLine eid={t.legs[j].eid} />}</div><div className="lr">{x === 'won' || x === 'lost' ? null : l.p != null ? <b className={'pchip ' + chanceCls(l.p)}>{pct(l.p)}</b> : null}<span className={'sc ' + x}>{sc}</span>{t.legs[j].o ? <span className="sub">@{(+t.legs[j].o).toFixed(2)}</span> : null}</div></div> })}
+      return <div key={j} className={'leg ' + x}><span className="li">{ICON[x]}</span><div className="lt"><b>{M.nice(l.lab, m)}</b><span className="sub">{m ? m.h + ' v ' + m.a : 'loading…'}{(() => { const nd = x === 'live' && M.needInfo(t.legs[j].eid, l.lab); return nd ? <span className="need"> · {nd.txt}</span> : null })()}</span>{open && <MatchLine eid={t.legs[j].eid} />}</div><div className="lr">{x === 'won' || x === 'lost' ? null : l.p != null ? <b className={'pchip ' + chanceCls(l.p)}>{pct(l.p)}</b> : null}<span className={'sc ' + x}>{sc}</span>{t.legs[j].o ? <span className="sub">@{(+t.legs[j].o).toFixed(2)}</span> : null}</div></div> })}
       {!open && legs.length > 3 && <button className="more" onClick={() => setOpen(true)}>+ {legs.length - 3} more bets · team chances ▾</button>}
       {open && <button className="more" onClick={() => setOpen(false)}>Show less ▴</button>}</div>
     <div className="perf"><span /></div>
     <div className="stub-foot">
       <div className="stamp-wrap"><span key={status} className="stamp">{status}</span></div>
       <div className="stub-msg">{msg}</div>
-      {!res && started && odds && <div className="co"><span className="sub">the bookie offers you</span><input type="number" step="100" min="0" placeholder="type amount" defaultValue={M.CO[t.id] || ''} onChange={e => { M.CO[t.id] = e.target.value; force(x => x + 1) }} /><span className="sub">worth now <b style={{ color: 'var(--tx)' }}>{fair != null ? clp(fair) : '–'}</b></span></div>}
+      {!res && started && odds && <div className="co"><span className="sub">{M.bookName()} cash-out offer</span><input type="number" step="100" min="0" placeholder="type amount" defaultValue={M.CO[t.id] || ''} onChange={e => { M.CO[t.id] = e.target.value; force(x => x + 1) }} /><span className="sub">worth now <b style={{ color: 'var(--tx)' }}>{fair != null ? clp(fair) : '–'}</b></span></div>}
+      {!res && <Protect t={t} />}
       {open && !res && started && odds && <Tools t={t} legs={legs} fair={fair} stake={stake} odds={odds} />}
       {open && <button className="rmT" onClick={() => { if (confirm) M.removeTicket(t); else setConfirm(true) }}>{confirm ? 'Tap again to remove' : 'Remove ticket'}</button>}
     </div>
@@ -184,10 +203,19 @@ function Advice({ D, tot, st, setSt }) {
   if (!D.length) return null; const a = M.stakeAdvice(D, tot); const left = M.SAFE.budget - M.weekSpent()
   return <div className="advice">
     {a && a.fair && a.fair < 4 && <div className="ko">Total odds under 4 – usually not worth a ticket. Add more bets.</div>}
-    {a && a.fair && <div>Fair odds for these bets: <b>{a.fair.toFixed(2)}</b>{tot > 1 && <> · bookie gives {tot.toFixed(2)} → {a.price >= 0 ? <span className="ok">good price (+{Math.round(a.price * 100)}%)</span> : <span className="ko">{Math.round(-a.price * 100)}% too low</span>}</>}</div>}
+    <Strength st={M.strengthOf(D.map(l => M.legState(l).p))} /><SaferSwap D={D} />
+    {a && a.fair && <div>Our odds for these bets: <b>{a.fair.toFixed(2)}</b>{tot > 1 && <> · {M.bookName()} gives {tot.toFixed(2)} → {a.price >= 0 ? <span className="ok">good price (+{Math.round(a.price * 100)}%)</span> : <span className="ko">{Math.round(-a.price * 100)}% too low</span>}</>}</div>}
     {a && tot > 1 && <div>Smart bet size: {a.stake > 0 ? <><b>{clp(a.stake)}</b> <button className="linkb" onClick={() => setSt(String(a.stake))}>use it</button></> : <b>keep it very small (or skip)</b>}<span className="sub"> · from your money of {clp(E.BANK)}</span></div>}
     <div className="sub">Left this week: <b style={{ color: left > 0 ? 'var(--tx)' : 'var(--bad)' }}>{clp(Math.max(0, left))}</b> of {clp(M.SAFE.budget)}{st > M.SAFE.max ? <span className="ko"> · above your limit of {clp(M.SAFE.max)} per ticket</span> : null}{st > left ? <span className="ko"> · more than you have left this week</span> : null}</div>
   </div>
+}
+
+function WhatWins() {
+  const L = M.myBetStats()
+  return <div className="card"><h3>What wins for you</h3>
+    {!L.length ? <p className="sub">When your games finish, your bets are grouped here by type (W1/W2, 1X/X2, Total Over…), so you can see what works for you.</p> : <>
+      {L.map(g => <div key={g.k} className="ww"><span>{g.k}</span><span className="wwbar"><i style={{ width: (g.w / g.n * 100) + '%' }} className={g.w / g.n >= .7 ? 'hi' : g.w / g.n >= .5 ? 'md' : 'lo'} /></span><b>{g.w}/{g.n}</b></div>)}
+      <p className="sub">{L.filter(g => g.n >= 5).length ? 'Types with many losses: play them less, or only when the app shows 💰.' : 'Small numbers so far – wait for more games before changing anything.'}</p></>}</div>
 }
 
 function Limits() {
@@ -202,8 +230,8 @@ function Limits() {
 function Accuracy() {
   const a = M.accStats()
   return <div className="card"><h3>How accurate is the app?</h3>
-    <p>Tested on <b>2,584</b> past Nations League and qualifier games: the team ratings beat our old method by a lot (error score 0.49 vs 0.58, lower is better; guessing gives 0.67).</p>
-    {a.n ? <><p>Your games so far: <b>{a.n}</b> finished. The favourite won <b>{M.pct(a.fav)}</b>. Over/under 2.5 right <b>{M.pct(a.ou)}</b>. Error score <b>{a.brier.toFixed(2)}</b>.</p>
+    <p>Our % come from our own team ratings, tested on thousands of past games (national teams and the top 5 leagues). {M.bookName()}’s odds are only used to compare.</p>
+    {a.n ? <><p>Your games so far: <b>{a.n}</b> finished. Our favourite won <b>{M.pct(a.fav)}</b>. Total Over/Under 2.5 right <b>{M.pct(a.ou)}</b>.</p>
       <div className="acclist">{a.list.map((x, i) => { const [h, aw] = x.out; const r = h > aw ? 0 : h === aw ? 1 : 2; const fi = x.p.indexOf(Math.max(...x.p)); return <div key={i} className="arow2"><span>{x.n}</span><b>{h}-{aw}</b><span className={fi === r ? 'ok' : 'ko'}>{fi === r ? '✓ called it' : '✗ missed'}</span></div> })}</div></>
       : <p className="sub">The app saves its % before every game and checks them at the final whistle. Results show here after the first games finish.</p>}
     {a.n > 0 && a.n < 50 && <p className="sub">Still a small number of games – don’t read too much into it yet.</p>}</div>
@@ -217,7 +245,7 @@ function MoveBox() {
     <div className="mv"><b>2. On the other device</b><textarea placeholder="Paste the code here" value={inp} onChange={e => setInp(e.target.value)} />
       <button onClick={() => { try { const n = M.importCode(inp); setMsg(n ? `Added ${n} ticket${n > 1 ? 's' : ''} ✓` : 'Done – nothing new to add'); setInp('') } catch (e) { setMsg('That code did not work – copy it again') } }}>Add tickets</button></div>
     {msg && <div className="ok" style={{ marginTop: 8 }}>{msg}</div>}
-    <div className="sub" style={{ marginTop: 6 }}>Send the code to yourself on WhatsApp or e-mail. Your bookie tickets are already on both devices.</div></div>
+    <div className="sub" style={{ marginTop: 6 }}>Send the code to yourself on WhatsApp or e-mail.</div></div>
 }
 
 export function TicketsView({ openBuilder }) {
@@ -230,12 +258,12 @@ export function TicketsView({ openBuilder }) {
     <Summary list={mine} />
     <div className="ttabs"><button className={tab === 'open' ? 'on' : ''} onClick={() => setTab('open')}>Open <span>{openT.length}</span></button><button className={tab === 'done' ? 'on' : ''} onClick={() => setTab('done')}>Finished <span>{doneT.length}</span></button></div>
     <div className="t3list">{list.length ? list.map((t, i) => <TicketStub key={t.id} t={t} i={i} />) : <div className="emptyc"><div className="big">🎟</div><p>{tab === 'open' ? 'No open tickets.' : 'No finished tickets yet.'}</p>{tab === 'open' && <button className="cta" onClick={openBuilder}>＋ Add ticket</button>}</div>}</div>
-    <button className="fold" onClick={() => setSug(!sug)}>{sug ? '▴' : '▾'} Suggested tickets ({suggested.length})</button>
-    {sug && <div className="t3list">{suggested.map((t, i) => <TicketStub key={t.id} t={t} i={i} />)}</div>}
+    {suggested.length > 0 && <button className="fold" onClick={() => setSug(!sug)}>{sug ? '▴' : '▾'} Suggested tickets ({suggested.length})</button>}
+    {sug && suggested.length > 0 && <div className="t3list">{suggested.map((t, i) => <TicketStub key={t.id} t={t} i={i} />)}</div>}
     <button className="fold" onClick={() => setMove(!move)}>{move ? '▴' : '▾'} Send my tickets to my phone or PC</button>
     {move && <MoveBox />}
-    <button className="fold" onClick={() => setTools(!tools)}>{tools ? '▴' : '▾'} More: safe ticket maker, past tickets, “what if” money test, my limits</button>
+    <button className="fold" onClick={() => setTools(!tools)}>{tools ? '▴' : '▾'} More: what wins for you, safe ticket maker, past tickets, “what if” money test, my limits</button>
     {tools && <><Exposure /><SafeBuilder onUse={L => { const d = E.DRAFT.slice(); L.forEach(x => { if (!d.some(l => l.eid === x.eid && l.n === x.n)) d.push(x) }); M.setDraft(d); openBuilder() }} />
-      <div className="two"><Limits /><Accuracy /></div><div className="two"><div className="card"><h3>Past tickets</h3><ResultsLog /></div><div className="card"><h3>“What if” money test</h3><BankSim /></div></div></>}
+      <div className="two"><WhatWins /><Accuracy /></div><div className="two"><Limits /><div /></div><div className="two"><div className="card"><h3>Past tickets</h3><ResultsLog /></div><div className="card"><h3>“What if” money test</h3><BankSim /></div></div></>}
   </section>
 }

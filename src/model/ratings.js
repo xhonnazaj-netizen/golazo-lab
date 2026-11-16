@@ -2,6 +2,7 @@
 import RATINGS from '../data/elo-data.js';
 const ELO0 = RATINGS.elo;
 let DC = RATINGS.dc;
+let CLUBS = RATINGS.clubs;
 import { LS } from '../util/storage.js';
 import { clamp } from './math.js';
 
@@ -99,6 +100,52 @@ function eloLam(m) {
   return [clamp(lh, 0.15, 4.5), clamp(la, 0.12, 4)];
 }
 
+
+// ---- clubs (5 big leagues): Elo + form fitted on 19,760 league games; tested 7% better than league averages ----
+const CALIAS = {
+  "manchester city": "Man City", "manchester united": "Man United", "nottingham forest": "Nott'm Forest", "wolverhampton wanderers": "Wolves",
+  "tottenham hotspur": "Tottenham", "brighton & hove albion": "Brighton", "brighton and hove albion": "Brighton", "newcastle united": "Newcastle",
+  "west ham united": "West Ham", "leeds united": "Leeds", "afc bournemouth": "Bournemouth", "athletic club": "Ath Bilbao", "athletic bilbao": "Ath Bilbao",
+  "atletico madrid": "Ath Madrid", "atletico de madrid": "Ath Madrid", "real betis": "Betis", "celta vigo": "Celta", "rc celta": "Celta", "espanyol": "Espanol",
+  "rcd espanyol": "Espanol", "real oviedo": "Oviedo", "rayo vallecano": "Vallecano", "real sociedad": "Sociedad", "deportivo alaves": "Alaves", "rcd mallorca": "Mallorca",
+  "ac milan": "Milan", "as roma": "Roma", "hellas verona": "Verona", "internazionale": "Inter", "inter milan": "Inter", "ssc napoli": "Napoli", "bayer leverkusen": "Leverkusen",
+  "borussia dortmund": "Dortmund", "borussia monchengladbach": "M'gladbach", "eintracht frankfurt": "Ein Frankfurt", "fc augsburg": "Augsburg", "1. fc koln": "FC Koln",
+  "fc cologne": "FC Koln", "hamburg sv": "Hamburg", "hamburger sv": "Hamburg", "1. fc heidenheim 1846": "Heidenheim", "1. fc union berlin": "Union Berlin",
+  "sc freiburg": "Freiburg", "st. pauli": "St Pauli", "fc st. pauli": "St Pauli", "tsg hoffenheim": "Hoffenheim", "vfb stuttgart": "Stuttgart", "vfl wolfsburg": "Wolfsburg",
+  "mainz 05": "Mainz", "1. fsv mainz 05": "Mainz", "fsv mainz 05": "Mainz", "sv werder bremen": "Werder Bremen", "aj auxerre": "Auxerre", "as monaco": "Monaco",
+  "stade brestois 29": "Brest", "le havre ac": "Le Havre", "rc lens": "Lens", "olympique lyonnais": "Lyon", "olympique de marseille": "Marseille", "ogc nice": "Nice",
+  "paris saint-germain": "Paris SG", "stade rennais": "Rennes", "rc strasbourg": "Strasbourg", "rc strasbourg alsace": "Strasbourg", "fc nantes": "Nantes", "losc lille": "Lille",
+  "fc lorient": "Lorient", "fc metz": "Metz", "angers sco": "Angers", "toulouse fc": "Toulouse",
+};
+function clubKey(lg, name) {
+  const T = CLUBS && CLUBS.teams && CLUBS.teams[lg];
+  if (!T) return null;
+  const n = enorm(name);
+  if (CALIAS[n] && T[CALIAS[n]]) return CALIAS[n];
+  const strip = (s) => enorm(s).replace(/\b(fc|afc|cf|ac|as|sc|ssc|sv|vfb|vfl|tsg|rc|ogc|aj|1\.|club|de|calcio)\b/g, "").replace(/[^a-z ]/g, "").trim();
+  const sn = strip(name);
+  for (const k of Object.keys(T)) if (strip(k) === sn) return k;
+  for (const k of Object.keys(T)) if (sn && (strip(k).startsWith(sn.split(" ")[0]) || sn.startsWith(strip(k).split(" ")[0]))) return k;
+  return null;
+}
+function clubLam(m) {
+  const kh = clubKey(m.lg, m.h), ka = clubKey(m.lg, m.a);
+  if (!kh || !ka) return null;
+  const T = CLUBS.teams[m.lg], mu = CLUBS.lgm[m.lg], kp = CLUBS.kp || 25;
+  const [rh, fh] = T[kh], [ra, fa] = T[ka];
+  const x = (f, i, j) => (f[i] + kp) / (f[j] + kp);
+  const dr = rh - ra;
+  return [clamp(mu[0] * Math.exp(CLUBS.b * dr) * x(fh, 0, 1) * x(fa, 2, 3), 0.2, 4.2), clamp(mu[1] * Math.exp(-CLUBS.b * dr) * x(fa, 0, 1) * x(fh, 2, 3), 0.15, 3.8)];
+}
+// yellow cards expected per team, from each club's card history (league average for national teams)
+function cardsOf(m) {
+  const T = CLUBS && CLUBS.teams && CLUBS.teams[m.lg];
+  if (!T) return null;
+  const kh = clubKey(m.lg, m.h), ka = clubKey(m.lg, m.a), avg = (CLUBS.ylg || {})[m.lg];
+  if (!avg) return null;
+  return [avg * ((kh && T[kh][2]) || 1), avg * ((ka && T[ka][2]) || 1)];
+}
+
 // Load the nightly ratings.json (only when served over http(s), e.g. GitHub Pages).
 async function loadRatings() {
   try {
@@ -107,6 +154,7 @@ async function loadRatings() {
     if (!r.ok) return false;
     const j = await r.json();
     if (j.dc && j.dc.teams) DC = j.dc;
+    if (j.clubs && j.clubs.teams) CLUBS = j.clubs;
     if (j.elo && j.elo.upto >= ELO.upto) {
       ELO = Object.assign({}, ELO, j.elo);
       eloIdx();
@@ -180,4 +228,4 @@ async function updateElo() {
   } catch (e) {}
 }
 
-export { eloOf, eloKey, formX, eloLam, dcLam, eloK, updateElo, loadRatings };
+export { eloOf, eloKey, formX, eloLam, dcLam, clubKey, clubLam, cardsOf, eloK, updateElo, loadRatings };

@@ -10,11 +10,12 @@ const { E } = M
 function LayoutMenu() {
   const [open, setOpen] = useState(false)
   useEffect(() => { const f = () => setOpen(false); if (open) document.addEventListener('click', f); return () => document.removeEventListener('click', f) }, [open])
-  const P = M.PREF; const items = [['mom', 'Who is attacking (chart)'], ['playing', 'How the game is going'], ['bets', 'Bets now'], ['pMk', 'All bets'], ['pSt', 'Stats'], ['pEv', 'What happened'], ['pLu', 'Who plays'], ['pCx', 'Recent games']]
+  const P = M.PREF; const items = [['mom', 'Who is attacking (chart)'], ['playing', 'How the game is going'], ['bets', 'Best odds now'], ['pMk', 'All bets'], ['pSt', 'Stats'], ['pEv', 'What happened'], ['pLu', 'Who plays'], ['pCx', 'Recent games']]
   return <div className="layw"><button onClick={e => { e.stopPropagation(); setOpen(!open) }}>⚙ Settings</button>
     {open && <div className="laybox card show" onClick={e => e.stopPropagation()}>
       <div className="lt2">Field</div><div className="seg">{['large', 'compact', 'hidden'].map(v => <button key={v} className={P.pitch === v ? 'on' : ''} onClick={() => M.setPref('pitch', v)}>{v[0].toUpperCase() + v.slice(1)}</button>)}</div>
       <div className="lt2">Match list</div><div className="seg">{[['all', 'All matches'], ['live', 'Live only']].map(([v, l]) => <button key={v} className={P.strip === v ? 'on' : ''} onClick={() => M.setPref('strip', v)}>{l}</button>)}</div>
+      <div className="lt2">Where you bet</div><input className="okey" type="text" placeholder="1win" defaultValue={M.bookName()} onBlur={e => M.setBook(e.target.value)} /><div className="sub" style={{ fontSize: 11, margin: '4px 0 8px' }}>Only a name for the labels. The app never connects to it.</div>
       <div className="lt2">Extra live odds (optional, advanced)</div><input className="okey" type="password" placeholder="The Odds API key – leave empty" defaultValue={M.hasOddsKey() ? '••••••••' : ''} onBlur={e => { if (e.target.value !== '••••••••') M.setOddsKey(e.target.value) }} /><div className="sub" style={{ fontSize: 11, margin: '4px 0 8px' }}>{M.hasOddsKey() ? 'Saved on this device only.' : 'Not needed. The app works without it.'}</div>
       <div className="lt2">Show these parts</div>{items.map(([k, l]) => <label key={k} className="chk"><input type="checkbox" checked={P[k] !== false} onChange={e => M.setPref(k, e.target.checked)} /> {l}</label>)}</div>}</div>
 }
@@ -48,9 +49,9 @@ export function Logo({ size = 26 }) {
 
 function Help({ onClose }) {
   return <div className="help1"><button className="x linkb" onClick={onClose}>Got it ✕</button><h3>HOW IT WORKS</h3><ol>
-    <li><b>Pick a game.</b> The big numbers are each team’s chance to win.</li>
-    <li><b>Look at “Bets now”.</b> Only bet if the bookie pays at least the number shown.</li>
-    <li><b>Add your bookie ticket</b> in My tickets. We follow it live and tell you when to keep it or take the money.</li>
+    <li><b>Pick a game.</b> The big numbers are our own % for W1 · X · W2.</li>
+    <li><b>Look at “Best odds now”</b> next to the stadium. Only bet if {M.bookName()} pays at least “our odds”.</li>
+    <li><b>Add your {M.bookName()} ticket</b> in My tickets. We follow it live and tell you when to keep it or take the money.</li>
     <li><b>Stuck?</b> Tap 💬 and ask, e.g. “Germany” or “take the money?”.</li></ol></div>
 }
 

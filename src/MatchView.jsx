@@ -39,7 +39,8 @@ export function Scoreboard(){
       <div className="sbs"><div className="sc">{s.state==='pre'?'VS':`${s.h} – ${s.a}`}</div><div className="st">{st}</div></div>
       <div className="sbt r"><span>{m.a}</span><img src={M.logo(m,1)} alt=""/></div></div>
     <div className="wbar big"><div style={{width:H*100+'%',background:ch}}/><div style={{width:D*100+'%',background:'#556'}}/><div style={{width:A*100+'%',background:ca}}/></div>
-    <div className="wl big"><span><b className="tp">{pct(H)}</b> {m.hA} wins</span><span>Draw {pct(D)}</span><span>{m.aA} wins <b className="tp">{pct(A)}</b></span></div>
+    <div className="wl big"><span><b className="tp">{pct(H)}</b> W1 · {m.hA}</span><span>X · Draw {pct(D)}</span><span>W2 · {m.aA} <b className="tp">{pct(A)}</b></span></div>
+    <div className="sub" style={{textAlign:'center',marginTop:4}}>Our own % from our team ratings{s.state==='in'?' and what is happening now':''}</div>
   </div>
 }
 
@@ -128,42 +129,47 @@ export function Momentum(){
 /* ---------- how they're playing + live bets ---------- */
 function Playing(){const m=M.byE[E.SEL],s=M.S(E.SEL);if(s.state!=='in'||!M.PREF.playing)return null;const[ch,ca]=M.colors(m)
   const el=1-M.remFrac(s),exH=m.lam[0]*el,exA=m.lam[1]*el
-  const l15=[0,1].map(sd=>s.shots.filter(z=>z.side===sd&&z.mi>s.min-15).reduce((a,z)=>a+z.xg,0)),sot=[0,1].map(sd=>s.shots.filter(z=>z.side===sd&&z.on).length)
+  const sot=[0,1].map(sd=>s.shots.filter(z=>z.side===sd&&z.on).length)
   const pr=M.pressureAt(s,s.min),tot=pr[0]+pr[1],share=tot>.05?pr[0]/tot:.5
-  const V=({x,ex,name})=>x>ex*1.35&&x-ex>.35?<div><span className="ok">{name} creating more than expected</span> ({x.toFixed(2)} xG vs {ex.toFixed(2)})</div>:x<ex*.6&&ex-x>.35?<div><span className="ko">{name} creating less than expected</span> ({x.toFixed(2)} xG vs {ex.toFixed(2)})</div>:<div>{name} about as expected ({x.toFixed(2)} xG vs {ex.toFixed(2)})</div>
+  const V=({x,ex,name})=>x>ex*1.35&&x-ex>.35?<div><span className="ok">{name} creating more chances than usual</span></div>:x<ex*.6&&ex-x>.35?<div><span className="ko">{name} creating fewer chances than usual</span></div>:<div>{name} about as usual</div>
   return <div className="lvcard"><h3>How the game is going <span className="sub">{s.clock}</span></h3>
     <div className="pbar"><div style={{width:share*100+'%',background:ch}}/><div style={{width:(1-share)*100+'%',background:ca}}/></div>
     <div className="sub" style={{margin:'4px 0 8px'}}>{share>.65?<><b style={{color:ch}}>{m.h}</b> on top in the last 10 min</>:share<.35?<><b style={{color:ca}}>{m.a}</b> on top in the last 10 min</>:'Even in the last 10 min'}</div>
-    <div className="pl3"><span/><b>{m.hA}</b><b>{m.aA}</b><span>Chances (last 15 min)</span><span>{s.xh.toFixed(2)} ({l15[0].toFixed(2)})</span><span>{s.xa.toFixed(2)} ({l15[1].toFixed(2)})</span><span>Shots on goal</span><span>{sot[0]}</span><span>{sot[1]}</span><span>Corners</span><span>{s.ch}</span><span>{s.ca}</span></div>
+    <div className="pl3"><span/><b>{m.hA}</b><b>{m.aA}</b><span>Big chances (last 15 min)</span><span>{s.shots.filter(z=>z.side===0&&z.xg>=.15).length} ({s.shots.filter(z=>z.side===0&&z.xg>=.15&&z.mi>s.min-15).length})</span><span>{s.shots.filter(z=>z.side===1&&z.xg>=.15).length} ({s.shots.filter(z=>z.side===1&&z.xg>=.15&&z.mi>s.min-15).length})</span><span>Shots on goal</span><span>{sot[0]}</span><span>{sot[1]}</span><span>Yellow cards</span><span>{s.yh||0}</span><span>{s.ya||0}</span></div>
     <div className="sub" style={{marginTop:6,lineHeight:1.5}}><V x={s.xh} ex={exH} name={m.h}/><V x={s.xa} ex={exA} name={m.a}/></div></div>}
-function Bets(){const m=M.byE[E.SEL],s=M.S(E.SEL);if(s.state==='post'||M.PREF.bets===false)return null
-  const list=M.liveBets(m,s).slice(0,5);const lo=M.LO[E.SEL];const live=lo&&lo.live&&Date.now()-lo.t<360000
-  return <div className="lvcard"><h3>{s.state==='in'?'Bets now':'Bets before the match'} <span className="sub">{m.hA}–{m.aA}</span></h3>
-    <div className="lb lbh"><span>Bet</span><span>Chance</span><span>Bet if the bookie pays</span><span>{live?'bookie now':''}</span></div>
-    {list.map(b=><div key={b.n} className={'lb'+(b.ev!=null&&b.ev>.03?' good':'')}><span>{M.nice(b.n)}</span><span className="orb">{pct(b.p)}</span><span className="orb">{b.min.toFixed(2)}+</span><span className={'orb '+(b.ev!=null&&b.ev>.03?'ok':'sub')}>{b.od?b.od.toFixed(2)+(b.ev>.03?' ✦':''):''}</span></div>)}
-    <p className="sub" style={{margin:'8px 0 0',lineHeight:1.5}}>Only bet if the bookie pays at least that number. If it pays less, skip it.{live?' ✦ = the bookie pays more than we expect right now.':''}</p></div>}
-export function LivePane({onPick}){return <div className="livegrid"><div className="lcol"><Pitch onPick={onPick}/><Momentum/></div><div className="rcol" id="livex"><LiveAdvisor eid={E.SEL}/><Playing/><Bets/></div></div>}
+/* right of the stadium: live commentary + best odds now */
+const FICON={goal:'⚽',red:'🟥',yel:'🟨',sub:'🔁',shot:'🎯'}
+function Commentary(){const s=M.S(E.SEL),m=M.byE[E.SEL];const F=(s.feed&&s.feed.length?s.feed:(s.ev||[]).slice().reverse().map(e=>({c:e.c,tx:e.tx||e.pl.join(', '),k:/goal/.test(e.ty)?'goal':/red/.test(e.ty)?'red':/yellow/.test(e.ty)?'yel':/substitution/.test(e.ty)?'sub':''})))
+  return <div className="lvcard comm"><h3>{s.state==='in'?<span><span className="live-dot"/> Live commentary</span>:'Commentary'}<span className="sub">{s.state==='in'?s.clock:s.state==='post'?'Final '+s.h+'-'+s.a:''}</span></h3>
+    {F.length?<div className="feed">{F.slice(0,50).map((x,i)=><div key={i} className={'fd '+(x.k||'')+(i===0&&s.state==='in'?' new':'')}><span className="c">{x.c}</span><span className="ic">{FICON[x.k]||'·'}</span><span className="tx">{x.tx}</span></div>)}</div>
+      :<p className="sub">{s.state==='pre'?'Starts at kick-off: every chance, goal and card shows here as it happens.':'No commentary for this game.'}</p>}</div>}
+function BestOdds(){const m=M.byE[E.SEL],s=M.S(E.SEL);if(!m||s.state==='post'||M.PREF.bets===false)return null;const L=M.bestOddsNow(E.SEL,6);const B=M.bookName()
+  return <div className="lvcard"><h3>Best odds now <span className="sub">{s.state==='in'?'live':'before the game'}</span></h3>
+    <div className="lb lbh"><span>Bet</span><span>Our %</span><span>Our odds</span><span>Bookies</span></div>
+    {L.length?L.map(b=>{const on=M.inDraft(E.SEL,b.n);return <button key={b.n} className={'lb lbb'+(b.ev!=null&&b.ev>.03?' good':'')+(on?' on':'')} onClick={()=>M.addPick(E.SEL,b.n)} title={on?'Remove from my new ticket':'Add to my new ticket'}><span>{on?'✓ ':'＋ '}{M.nice(b.n,m)}{b.need&&<span className="need"> · {b.need.txt}</span>}</span><span className="orb">{pct(b.p)}</span><span className="orb">{b.fair.toFixed(2)}</span><span className={'orb '+(b.ev!=null&&b.ev>.03?'ok':'sub')}>{b.od?b.od.toFixed(2)+(b.ev>.03?' 💰':''):'–'}</span></button>}):<p className="sub">No bet we like right now.</p>}
+    <p className="sub" style={{margin:'8px 0 0',lineHeight:1.5}}>Highest odds first, only bets with our % 55% or more. Play only if {B} pays at least “our odds”. 💰 = the bookies pay more than it is worth.</p></div>}
+export function LivePane({onPick}){return <div className="livegrid"><div className="lp-pitch lcol"><Pitch onPick={onPick}/></div><div className="rcol" id="livex"><Commentary/><BestOdds/></div><div className="lp-rest lcol"><LiveAdvisor eid={E.SEL}/><Playing/><Momentum/></div></div>}
 
 /* ---------- all markets ---------- */
 export function MarketsPane({onPick}){const[tab,setTab]=useState('Result');const m=M.byE[E.SEL],s=M.S(E.SEL),R=M.simOf(E.SEL);const lo=M.LO[E.SEL];const[busy,setBusy]=useState(false)
-  const G=['Result','Goals','Halves','Corners','Cards','Score','Players']
+  const G=['Result','Goals','Cards']
   let rows
   if(tab==='Players'){const lu=M.LU[E.SEL],sh=M.sharesFor(E.SEL);if(!lu||!sh)rows=<p className="empty">Loading players…</p>;else{const[lh,la]=M.lamsNow(m,s);const L=[]
     ;['h','a'].forEach(side=>(lu[side].players||[]).forEach(p=>{const x=sh[p.id];if(!x)return;const l=side==='h'?lh:la;L.push([p,side,1-Math.exp(-l*x.g),1-Math.exp(-l*x.a)])}));L.sort((a,b)=>b[2]-a[2])
     rows=L.slice(0,16).map(([p,side,pg,pa])=><div key={p.id} className="mk" style={{cursor:'pointer'}} onClick={()=>onPick(p,side)}><span>{p.name}<br/><span className="sub">{side==='h'?m.hA:m.aA} · assist {pct(pa)}</span></span><span className="p">{pct(pg)}</span><span className="o">{fo(pg)}</span><span className="b">–</span><span/></div>)}}
-  else{let L=M.markets(m).filter(x=>x.g===tab).map(x=>({...x,p:M.frac(R,x.f)+(x.pu?M.frac(R,x.pu):0)}));if(tab==='Score')L=L.sort((a,b)=>b.p-a.p).slice(0,10)
-    rows=L.map(x=>{const od=x.k&&((lo&&lo.o[x.k])||(!lo&&m.odds&&m.odds[x.k]));const ev=od?x.p*od-1:null
-      return <div key={x.n} className="mk"><span>{x.n}</span><span className="p">{pct(x.p)}</span><span className="o">{fo(x.p)}</span><span className={'b '+(ev!=null&&ev>.03?'val':'neg')}>{od?od.toFixed(2)+(ev>.03?' ✦':''):'–'}</span>
-        <button className="add" title="Add to a new ticket" onClick={()=>{if(!E.DRAFT.some(l=>l.eid===E.SEL&&l.n===x.n)){M.setDraft([...E.DRAFT,{eid:E.SEL,lg:m.lg,date:E.CUR.date,n:x.n,o:null}]);M.alertMsg('info','Added to your new ticket: '+m.hA+'–'+m.aA+' '+x.n)}}}>+</button></div>})}
+  else{let L=M.marketsShown(m).filter(x=>x.g===tab).map(x=>({...x,p:M.frac(R,x.f)+(x.pu?M.frac(R,x.pu):0)}))
+    rows=L.map(x=>{const od=x.k&&((lo&&lo.o[x.k])||(m.odds&&m.odds[x.k]));const ev=od?x.p*od-1:null
+      return <div key={x.n} className="mk"><span>{M.nice(x.n,m)}</span><span className="p">{pct(x.p)}</span><span className="o">{fo(x.p)}</span><span className={'b '+(ev!=null&&ev>.03?'val':'neg')}>{od?od.toFixed(2)+(ev>.03?' 💰':''):'–'}</span>
+        <button className="add" title="Add to a new ticket" onClick={()=>{if(!E.DRAFT.some(l=>l.eid===E.SEL&&l.n===x.n)){M.setDraft([...E.DRAFT,{eid:E.SEL,lg:m.lg,date:E.CUR.date,n:x.n,o:null}]);M.alertMsg('info','Added to your new ticket: '+m.hA+'–'+m.aA+' '+M.nice(x.n,m))}}}>+</button></div>})}
   return <div><div className="tabs">{G.map(g=><button key={g} className={g===tab?'on':''} onClick={()=>setTab(g)}>{g}</button>)}</div>
-    <div className="mk" style={{color:'var(--mut)',fontSize:11,border:0}}><span>Pick</span><span style={{textAlign:'right'}}>Chance</span><span style={{textAlign:'right'}}>Fair</span><span style={{textAlign:'right'}}>{lo?`Bookie (${lo.live?'live':'pre-match'})`:'Bookie'}</span><span/></div>
+    <div className="mk" style={{color:'var(--mut)',fontSize:11,border:0}}><span>Bet</span><span style={{textAlign:'right'}}>Our %</span><span style={{textAlign:'right'}}>Our odds</span><span style={{textAlign:'right'}}>{lo&&lo.live?'Bookies (live)':'Bookies'}</span><span/></div>
     {rows}
-    <p className="sub" style={{margin:'8px 0 0'}}>{M.hasOddsKey()&&<button style={{fontSize:11,padding:'3px 8px'}} disabled={busy} onClick={async()=>{setBusy(true);await M.refreshOdds();setBusy(false)}}>{busy?'Loading…':'Refresh live odds'}</button>} {M.hasOddsKey()&&E.LOC!=null?`Live odds credits left: ${E.LOC} · `:''} ✦ the bookmaker pays more than our fair price · + adds a pick to a new ticket</p></div>}
+    <p className="sub" style={{margin:'8px 0 0'}}>{M.hasOddsKey()&&<button style={{fontSize:11,padding:'3px 8px'}} disabled={busy} onClick={async()=>{setBusy(true);await M.refreshOdds();setBusy(false)}}>{busy?'Loading…':'Refresh live odds'}</button>} {M.hasOddsKey()&&E.LOC!=null?`Live odds credits left: ${E.LOC} · `:''} Our % is our own. Bookies’ odds are only to compare · 💰 they pay more than it is worth · + adds the bet to your ticket</p></div>}
 
 /* ---------- stats / events / lineups ---------- */
 export function StatsPane(){const s=M.S(E.SEL),m=M.byE[E.SEL],[ch,ca]=M.colors(m),h=s.boxh,a=s.boxa
   if(!h||!a||s.state==='pre'){const R=M.simOf(E.SEL);let c=0,y=0;for(let n=0;n<R.N;n++){c+=R.CH[n]+R.CA[n];y+=R.Y[n]}c/=R.N;y/=R.N
-    return <div><p className="sub" style={{margin:'0 0 6px'}}>Stats appear at kick-off. The model expects:</p><div className="big3"><div><div className="v">{m.lam[0].toFixed(1)}–{m.lam[1].toFixed(1)}</div><div className="l">Goals</div></div><div><div className="v">{c.toFixed(1)}</div><div className="l">Corners</div></div><div><div className="v">{y.toFixed(1)}</div><div className="l">Yellow cards</div></div></div></div>}
+    return <div><p className="sub" style={{margin:'0 0 6px'}}>Stats appear at kick-off. We expect:</p><div className="big3"><div><div className="v">{m.lam[0].toFixed(1)}–{m.lam[1].toFixed(1)}</div><div className="l">Goals</div></div><div><div className="v">{(m.lam[0]+m.lam[1]).toFixed(1)}</div><div className="l">Total goals</div></div><div><div className="v">{y.toFixed(1)}</div><div className="l">Yellow cards</div></div></div></div>}
   const Row=({lb,k,pc,vh,va})=>{const x=vh!=null?vh:(h[k]||0),y=va!=null?va:(a[k]||0),t=x+y||1;return <div className="stat"><div className="lb">{lb}</div><span className="n">{pc?x+'%':x}</span><div className="bar"><div style={{width:x/t*100+'%',background:ch}}/><div style={{width:y/t*100+'%',background:ca}}/></div><span className="n">{pc?y+'%':y}</span></div>}
   return <div><Row lb="Expected goals (our xG)" vh={+s.xh.toFixed(2)} va={+s.xa.toFixed(2)}/><Row lb="Possession" k="possessionPct" pc/><Row lb="Shots" k="totalShots"/><Row lb="On target" k="shotsOnTarget"/><Row lb="Corners" k="wonCorners"/><Row lb="Yellow cards" k="yellowCards"/><Row lb="Red cards" k="redCards"/><Row lb="Offsides" k="offsides"/><Row lb="Fouls" k="foulsCommitted"/><Row lb="Saves" k="saves"/></div>}
 export function EventsPane(){const s=M.S(E.SEL);if(!s.ev.length)return <p className="empty">Goals, cards and substitutions appear here live.</p>

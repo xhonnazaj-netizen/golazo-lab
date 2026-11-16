@@ -1,6 +1,6 @@
 # Golazo Lab
 
-**The numbers behind the game.** Golazo Lab shows the real chances behind every football match – win %, goals, halves, corners and cards – plus ready combinations with a tested track record and a live advisor that reads the game as it happens.
+**The numbers behind the game.** Golazo Lab gives its **own** % for every football match – 1X2 (W1 / X / W2, 1X / X2 / 12), Total Over / Under and yellow cards – plus ready combinations with a tested track record, ticket strength and protection, and a live advisor that reads the game as it happens. Bookmaker odds are never mixed into our % – they are only shown next to them, to compare.
 
 Everything runs in your browser. No account, no server, no tracking.
 
@@ -13,15 +13,17 @@ Everything runs in your browser. No account, no server, no tracking.
 
 | Screen | What it does |
 | --- | --- |
-| Today | Every game of the day in 8 competitions, win %, top bets with ★ predictability, ready combinations (total odds 4+) with their past record |
-| Match | Live pitch, live advisor (what is happening + best live bets), all bets incl. halves, margins, clean sheets |
-| My tickets | Track your tickets live, keep / take-the-money advice, weekly limits, move tickets between devices |
-| 💬 Assistant | Ask in English or Spanish: "Germany chance", "best unders", "should I take the money?" |
+| Today | Every game of the day, our W1 · X · W2, top bets with ★ predictability and a 💰 mark when the bookies pay more than a bet is worth, ready combinations (Fire 9, Best 6, Favourites, Goals, Big payout – all total odds 4+) with their tested record and ticket strength |
+| Match | Stadium with live commentary and "Best odds now" beside it, live advisor, "needs 1 more goal / can take 2 more cards" on every live bet, all 1X2 / Total / Cards lines |
+| My tickets | Track your tickets live, ticket strength (from each bet's own %), cover bet to protect the weakest leg, safer swap while building, keep / take-the-money advice, what wins for you, weekly limits |
+| 💬 Assistant | English or Spanish: "Spain", "Spain v France", "Real Madrid", "Fire 9", "how strong is my ticket?", "¿qué es X2?" – team form, head-to-head, scorers and rankings from a built-in database |
 
 ## How the maths works
 
 - **Team strength:** World Football Elo fitted on ~49,000 international results, plus time-weighted attack/defence factors (tested: error 0.190 vs 0.194 for Elo alone). Updates itself weekly from the free CC0 [international results dataset](https://github.com/martj42/international_results).
-- **Scores:** Dixon-Coles adjusted Poisson grid, 20,000 simulations per match. Bookmaker prices (when available) are de-vigged and blended 85/15 with the model.
+- **Clubs (top 5 leagues):** club Elo + form fitted on 19,760 games 2015-2026 (Brier 0.833 vs 0.897 for the league average), plus each club's yellow-card habit.
+- **Scores:** Dixon-Coles adjusted Poisson grid, 20,000 simulations per match. **Our own model only** – bookmaker prices are de-vigged and shown separately ("Bookies %") so you can spot value.
+- **Tested and rejected:** pi-ratings (Constantinou & Fenton 2013) scored 0.837 vs our 0.833 on the same club games; penaltyblog's Bivariate Poisson (Karlis & Ntzoufras) and Negative Binomial models gave the same accuracy as Dixon-Coles (0.18935 / 0.18938 vs 0.18944). Corners and both-teams-score were dropped from suggestions: their results are close to luck.
 - **Live:** score-state and red-card effects measured on 19,760 league games; momentum from the last 15 minutes of chances.
 - **Honesty:** every pre-match % is saved and checked at full time (Accuracy page). Bet types carry ★★★ (easy to predict) to ★ (close to a coin flip).
 
@@ -35,7 +37,10 @@ src/
   data/elo-data.js     ratings snapshot (written by model/train.py)
   model/math.js        Poisson / Gamma sampling, Dixon-Coles grid, de-vig
   model/ratings.js     Elo + form, blended 70/30 with penaltyblog Dixon-Coles
-  model/markets.js     every bet market, plain-word labels, predictability stars
+  model/markets.js     every bet market, 1win-style names, which bets are suggested, predictability stars
+  model/teamdb.js      assistant database: form, head-to-head, scorers, rankings, 1win glossary
+  data/teams-db.js     national-team results since 2018 + top-5-league results (built by model/build_db.py)
+  data/personal.local.js  your own tickets (optional, git-ignored – never published)
   util/storage.js      safe localStorage
   App.jsx, Today.jsx, MatchView.jsx, Tickets.jsx, Assistant.jsx   screens
 model/train.py         nightly training with penaltyblog -> public/ratings.json
@@ -69,6 +74,6 @@ Pushing to `main` runs the tests, builds and publishes to GitHub Pages (`.github
 
 ## Play safe
 
-18+ only. Predictions are probabilities, not guarantees – a 4+ odds ticket wins roughly 1 day in 4 or 5. Set the weekly limit in *My tickets → More → My limits*.
+18+ only. Predictions are probabilities, not guarantees – a 4+ odds ticket wins roughly 1 day in 4 or 5 (Fire 9: 30 of 136 tested match days). Set the weekly limit in *My tickets → More → My limits*.
 
 © 2026 Golazo Lab. All rights reserved.
