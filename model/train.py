@@ -76,6 +76,16 @@ def main():
     df["home_score"] = df.home_score.astype(int)
     df["away_score"] = df.away_score.astype(int)
     out = {"updated": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%MZ"), "elo": elo_and_form(rows), "dc": dixon_coles(df)}
+    # keep the club ratings (trained separately; the app replays this season's club results itself)
+    try:
+        with open(OUT, encoding="utf-8") as fh:
+            prev = json.load(fh)
+        if prev.get("clubs"):
+            out["clubs"] = prev["clubs"]
+    except Exception:
+        pass
+    if "clubs" not in out:
+        raise SystemExit("club ratings missing from " + OUT + " – refusing to write ratings without them")
     with open(OUT, "w", encoding="utf-8") as fh:
         json.dump(out, fh, ensure_ascii=False, separators=(",", ":"))
     with open(SNAPSHOT, "w", encoding="utf-8") as fh:
