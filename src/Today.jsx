@@ -19,6 +19,17 @@ function Pick({ x, showMatch = true }) {
     <button className="tp-add" onClick={() => M.addPick(x.eid, x.n)}>{on ? '✓' : '＋'}</button></div>
 }
 
+/* what keeps the most money: tested on 5,202 club games with real Bet365 odds */
+function BestZone() {
+  const [op, setOp] = useState(false)
+  return <div className={'card bestzone' + (op ? ' open' : '')}><button className="bz-h" onClick={() => setOp(!op)}><span>💡 <b>Best odds to bet</b> – what keeps the most money</span><span className="pr-ar">{op ? '▴' : '▾'}</span></button>
+    {op && <div className="bz-b">
+      <div className="bz-row"><b>1–3 bets</b><span>per ticket, odds about <b>1.25–2.20</b> each. Tested: about even over 3 seasons.</span></div>
+      <div className="bz-row"><b>✓ agree</b><span>Pick bets where our % and the bookies agree. When we disagreed, the bookies were usually right.</span></div>
+      <div className="bz-row"><b>Each bet costs ~5%</b><span>The bookie keeps a cut on every bet in a ticket: 3 bets ≈ 14%, 5 bets ≈ 21%, 9 bets ≈ 35% of the win.</span></div>
+      <div className="bz-row"><b>Long tickets</b><span>(4+ odds, 5–9 bets) are fun but lost 10–40% of the money in tests. Keep them small.</span></div>
+      <div className="bz-row"><b>Stake</b><span>No more than 5% of your betting money on one ticket. No system wins every day.</span></div></div>}</div>
+}
 function Combo({ c, i, open }) {
   if (c.wait) return <div className="combo wait" style={{ animationDelay: i * 70 + 'ms' }}><div className="cb-h"><div><b>{c.title}</b><div className="sub">{c.desc}</div></div></div>
     <div className="cb-wait"><div className="big">{c.have}/9</div><div>Only {c.have} game{c.have === 1 ? '' : 's'} left with a safe bet today. Fire 9 comes back when there are 9 – try <b>Tomorrow</b> at the top.</div></div>
@@ -39,7 +50,8 @@ export function TodayView({ openBuilder }) {
   const shown = lgf ? games.filter(g => g.lg === lgf) : games
   const live = games.filter(g => M.S(g.eid).state === 'in').length, done = games.filter(g => M.S(g.eid).state === 'post').length
   const myOpen = E.MY.filter(t => (t.real || !t.preset) && !M.settled(t.legs.map(M.legState))).length
-  const combos = M.combos(day).filter(c => c.wait || !lgf || c.legs.every(x => x.lg === lgf))
+  const all = M.combos(day); M.recordSuggestions(day, all)
+  const combos = all.filter(c => c.wait || !lgf || c.legs.every(x => x.lg === lgf))
   const picks = M.pickList(day, kind, .5, .97, lgf || undefined).slice(0, 10)
   const d = new Date(+day.slice(0, 4), +day.slice(4, 6) - 1, +day.slice(6, 8))
   const sorted = shown.slice().sort((a, b) => ({ in: 0, pre: 1, post: 2 })[M.S(a.eid).state] - ({ in: 0, pre: 1, post: 2 })[M.S(b.eid).state] || new Date(M.S(a.eid).date) - new Date(M.S(b.eid).date))
@@ -57,9 +69,10 @@ export function TodayView({ openBuilder }) {
       {live > 0 && <><h3 className="td-h">🔴 Live now – best bets</h3><div className="la-grid">{games.filter(g => M.S(g.eid).state === 'in').map(g => <LiveAdvisor key={g.eid} eid={g.eid} compact onOpen={() => go(g.lg, day, g.eid)} />)}</div></>}
       <h3 className="td-h">Ready combinations</h3>
       {combos.length ? <div className="combos">{combos.map((c, i) => <Combo key={c.id} c={c} i={i} open={openBuilder} />)}</div> : <p className="sub">All games are finished – try Tomorrow.</p>}
+      <BestZone />
       <div className="td-two">
         <div className="card"><div className="td-ph"><h3>Top % today</h3><div className="kinds">{[['safe', 'Safest'], ['goals', 'Total goals'], ['teams', '1X2'], ['cards', 'Cards']].map(([k, l]) => <button key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{l}</button>)}</div></div>
-          {picks.length ? picks.map(x => <Pick key={x.eid + x.n} x={x} />) : <p className="sub">No open games left.</p>}<div className="sub" style={{ marginTop: 6 }}>Our own % for the best bet of each game. ★★★ = easy to call, ★ = hard to call. 💰 = the bookies pay more than it is worth.</div></div>
+          {picks.length ? picks.map(x => <Pick key={x.eid + x.n} x={x} />) : <p className="sub">No open games left.</p>}<div className="sub" style={{ marginTop: 6 }}>Our own % for the best bet of each game. ★★★ = easy to call, ★ = hard to call. ✓ = the bookies agree with us.</div></div>
         <div className="card"><h3>All games</h3>{Object.entries(byLg).map(([name, L]) => <div key={name} className="td-lg"><div className="td-lgn">{name}</div>{L.map(({ eid, lg }) => { const m = M.byE[eid], s = M.S(eid); const [H, D, A] = hda(eid); const b = M.bestPicks(eid); const top = b && [...b.h, ...b.a, ...b.x].sort((p, q) => q.p - p.p)[0]
           return <div key={eid} className={'td-g' + (s.state === 'in' ? ' live' : '')} onClick={() => go(lg, day, eid)}>
             <span className="td-t">{s.state === 'in' && <span className="live-dot" />}{when(eid)}</span>

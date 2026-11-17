@@ -444,3 +444,26 @@ main.app{display:grid;grid-template-columns:270px minmax(0,1fr);gap:14px;padding
 .ww2{margin:-2px 0 6px;font-size:11px}
 .combos{align-items:start}.combo.wait{align-self:start}
 @media(max-width:760px){.cb-wait .big{font-size:22px}.td-top h2{font-size:20px}}
+/* ---- v4: suggestion history, AI challenge, best-odds zone, why panel ---- */
+.sugh .sugrec{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:6px 0 12px}.sugrec>div{background:rgba(255,255,255,.03);border-radius:10px;padding:8px;text-align:center}.sugrec b{display:block;font-family:Orbitron,Inter,sans-serif;font-size:18px}.sugrec span{font-size:10px;color:var(--mut)}
+@media(max-width:760px){.sugh .sugrec{grid-template-columns:repeat(2,1fr)}}
+.sugday{margin:8px 0}.sugd{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--cy);margin:10px 0 4px}
+.sugt{border:1px solid rgba(255,255,255,.07);border-radius:10px;margin-bottom:6px;overflow:hidden}.sugt.rwon{border-color:rgba(166,255,77,.45);background:rgba(166,255,77,.05)}.sugt.rlost{opacity:.85}
+.sugrow{width:100%;display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;background:none;border:0;border-radius:0;padding:8px 10px;text-align:left;color:var(--tx)}
+.sugrow:hover{background:rgba(61,245,255,.05);box-shadow:none}.sugn{font-weight:700}
+.sugres{font-family:Orbitron,Inter,sans-serif;font-size:11px;padding:2px 8px;border-radius:999px;white-space:nowrap}.sugres.won{background:var(--lm);color:#05120a}.sugres.lost{background:rgba(255,84,104,.18);color:var(--bad)}.sugres.live{background:rgba(255,84,104,.12);color:#ff8fa0}.sugres.waiting{color:var(--mut)}
+@media(max-width:760px){.sugrow{grid-template-columns:1fr auto}.sugrow .sub{grid-column:1/-1;order:3}}
+.suglegs{padding:0 10px 8px;animation:fadeUp .25s ease}.sgl{display:grid;grid-template-columns:18px 1fr auto;gap:6px;font-size:12px;padding:3px 0;border-top:1px solid rgba(255,255,255,.04)}.sgl .ic{font-weight:700}.sgl.won .ic{color:var(--lm)}.sgl.lost .ic{color:var(--bad)}.sgl.lost{opacity:.8}
+.chal .chopts{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.chopts button{flex:1;min-width:70px;font-family:Orbitron,Inter,sans-serif;font-size:12px}.chopts button.on,.chm.on{border-color:var(--cy);background:rgba(61,245,255,.12)}
+.chmodes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}@media(max-width:760px){.chmodes{grid-template-columns:1fr}}
+.chm{display:flex;flex-direction:column;gap:4px;text-align:left;padding:10px;line-height:1.35}.chm span{font-size:12px}.chm .sub{font-size:11px}
+.chbank{display:flex;align-items:center;gap:14px;margin:8px 0}.chbank>div{display:flex;flex-direction:column}.chbank b{font-family:Orbitron,Inter,sans-serif;font-size:18px}.chbank .arrow{color:var(--mut);font-size:20px}
+.chbar{position:relative;height:18px;border-radius:9px;background:rgba(255,255,255,.06);overflow:hidden;margin:8px 0}.chbar i{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,var(--cy),var(--lm));border-radius:9px;transition:width .6s}.chbar span{position:relative;font-size:10px;padding-left:8px;line-height:18px;color:#d8e8f5}
+.chpend{background:rgba(61,245,255,.06);border-radius:10px;padding:8px 10px;margin:8px 0;font-size:13px}.chdone{font-weight:700;margin:8px 0}.chdone.goal{color:var(--lm)}.chdone.bust{color:var(--bad)}
+.chlog{display:flex;flex-direction:column;gap:2px;margin:8px 0;font-size:12px}.chlog>div{display:grid;grid-template-columns:90px 1fr auto auto;gap:8px;padding:3px 0;border-top:1px solid rgba(255,255,255,.04)}
+@media(max-width:760px){.chlog>div{grid-template-columns:70px 1fr auto}.chlog>div span:nth-child(3){display:none}}
+.bestzone{padding:0;overflow:hidden;margin-bottom:14px}.bz-h{width:100%;display:flex;justify-content:space-between;align-items:center;background:none;border:0;border-radius:0;padding:12px 16px;text-align:left;color:var(--tx)}.bz-h:hover{box-shadow:none;background:rgba(61,245,255,.04)}
+.bz-b{padding:0 16px 12px;display:grid;gap:6px;animation:fadeUp .3s ease}.bz-row{display:grid;grid-template-columns:130px 1fr;gap:10px;font-size:13px;line-height:1.45}@media(max-width:760px){.bz-row{grid-template-columns:1fr}}
+.why{line-height:1.5}.why .wv{font-size:15px;font-weight:700;margin:4px 0 8px}.why .wp{display:grid;grid-template-columns:22px 1fr;gap:6px;padding:4px 0;font-size:13px;border-top:1px solid rgba(255,255,255,.04)}
+.why .how{margin-top:10px;padding:10px;border-radius:10px;background:rgba(61,245,255,.05);font-size:12px}.why .how ol{margin:6px 0 0 18px;padding:0}.why .how li{margin:2px 0}
+.whybtn{font-size:12px;padding:3px 10px;margin-left:8px}

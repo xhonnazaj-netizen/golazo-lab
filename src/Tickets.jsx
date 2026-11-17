@@ -249,6 +249,50 @@ function MoveBox() {
     <div className="sub" style={{ marginTop: 6 }}>Send the code to yourself on WhatsApp or e-mail.</div></div>
 }
 
+
+/* ---------- the app's own suggestions, by date, with won / lost ---------- */
+const dLabel = d => new Date(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6, 8)).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })
+const RES = { WON: '✓ WON', LOST: '✗ LOST', LIVE: '● LIVE', WAITING: 'waiting' }
+function SugHistory() {
+  const [openId, setOpenId] = useState(null); const [all, setAll] = useState(false)
+  useEffect(() => { M.loadHistory() }, [])
+  const H = M.sugHistory(); const rec = M.sugRecord()
+  if (!H.length) return null
+  const byDate = {}; H.forEach(x => (byDate[x.date] = byDate[x.date] || []).push(x))
+  const dates = Object.keys(byDate).sort().reverse(); const shown = all ? dates : dates.slice(0, 5)
+  return <div className="card sugh"><h3>Our suggested tickets – results</h3>
+    {rec.n > 0 && <div className="sugrec"><div><b>{rec.won}</b><span>won</span></div><div><b>{rec.lost}</b><span>lost</span></div><div><b>{rec.n}</b><span>finished</span></div>
+      <div><b className={rec.back >= rec.staked ? 'ok' : 'ko'}>{Math.round(rec.back * 1000).toLocaleString('en-US')}</b><span>back from {(rec.staked * 1000).toLocaleString('en-US')} (1,000 on each)</span></div></div>}
+    {shown.map(d => <div key={d} className="sugday"><div className="sugd">{dLabel(d)}</div>
+      {byDate[d].map(x => <div key={x.id} className={'sugt r' + x.res.toLowerCase()}>
+        <button className="sugrow" onClick={() => setOpenId(openId === x.id ? null : x.id)}><span className="sugn">{x.title}</span><span className="sub">{x.legs.length} bets · our odds {x.fair.toFixed(2)}</span><span className={'sugres ' + x.res.toLowerCase()}>{RES[x.res]}</span></button>
+        {openId === x.id && <div className="suglegs">{x.legs.map((l, i) => { const m = M.byE[l.eid]; return <div key={i} className={'sgl ' + l.st}><span className="ic">{l.st === 'won' ? '✓' : l.st === 'lost' ? '✗' : l.st === 'live' ? '●' : '·'}</span><span>{M.nice(l.n, m)}{m ? <span className="sub"> · {m.h} v {m.a}{M.S(l.eid).state !== 'pre' ? ` ${M.S(l.eid).h}-${M.S(l.eid).a}` : ''}</span> : null}</span><b>{M.pct(l.p)}</b></div> })}</div>}
+      </div>)}</div>)}
+    {dates.length > 5 && <button className="linkb" onClick={() => setAll(!all)}>{all ? 'Show less' : `Show all ${dates.length} days`}</button>}
+    <p className="sub" style={{ marginTop: 8 }}>Saved before kick-off, checked at the final whistle. “Back” uses our odds minus about 5% per bet (the bookie’s cut), so it is close to what 1win pays.</p></div>
+}
+
+/* ---------- AI challenge: play money only ---------- */
+const CH_ODDS = { steady: 'Tested: kept the money about level in most months; never 10x.', bold: 'Tested: doubled in about 1 month of 100, ended up in about 1 of 4.', chase: 'Tested: reached 10x in about 6–7 months of 100 – the other 9 of 10 lost everything.' }
+function Challenge() {
+  const st = M.challengeState(); const [start, setStart] = useState(50000); const [mode, setMode] = useState('steady')
+  if (!st) return <div className="card chal"><h3>🤖 AI money challenge</h3>
+    <p className="sub">Give the AI play money for 30 days. Every day it bets on its own suggested ticket by a fixed rule – you watch the money go up or down. No real money is used.</p>
+    <div className="chopts">{[5000, 10000, 20000, 50000].map(v => <button key={v} className={start === v ? 'on' : ''} onClick={() => setStart(v)}>{v.toLocaleString('en-US')}</button>)}</div>
+    <div className="chmodes">{Object.entries(M.CH_MODES).map(([k, v]) => <button key={k} className={'chm' + (mode === k ? ' on' : '')} onClick={() => setMode(k)}><b>{v.name}</b><span>{v.desc}</span><span className="sub">{CH_ODDS[k]}</span></button>)}</div>
+    <button className="cta" onClick={() => M.startChallenge(start, mode)}>Start the 30-day challenge</button></div>
+  const pctc = st.bank / st.start; const goal = st.start * 10
+  return <div className="card chal on"><h3>🤖 AI challenge · {st.mode.name}</h3>
+    <div className="chbank"><div><span className="sub">Started with</span><b>CLP {st.start.toLocaleString('en-US')}</b></div><div className="arrow">→</div><div><span className="sub">Now</span><b className={pctc >= 1 ? 'ok' : 'ko'}>CLP {st.bank.toLocaleString('en-US')}</b></div><div><span className="sub">x</span><b>{pctc.toFixed(2)}</b></div></div>
+    <div className="chbar"><i style={{ width: Math.min(100, st.bank / goal * 100) + '%' }} /><span>goal 10x = CLP {goal.toLocaleString('en-US')}</span></div>
+    {st.done && <div className={'chdone ' + st.done.toLowerCase()}>{st.done === 'GOAL' ? '🏆 10x reached!' : st.done === 'BUST' ? '💥 Money gone – the challenge is over.' : '🏁 30 days are over.'}</div>}
+    {st.pending && <div className="chpend">Today: <b>{st.pending.title}</b> · stake CLP {st.pending.stake.toLocaleString('en-US')} · about {st.pending.odds.toFixed(2)} · {RES[st.pending.res]}</div>}
+    {!st.pending && !st.done && <div className="sub">Waiting for the next {st.mode.cid === 'fav' ? 'Favourites 4+' : 'Safe 3'} ticket (it is saved before kick-off).</div>}
+    {st.log.length > 0 && <div className="chlog">{st.log.slice().reverse().map((x, i) => <div key={i}><span>{dLabel(x.date)}</span><span>{x.title}</span><span>CLP {x.stake.toLocaleString('en-US')} @ {x.odds.toFixed(2)}</span><b className={x.res === 'WON' ? 'ok' : 'ko'}>{x.res === 'WON' ? '✓' : '✗'} {x.bank.toLocaleString('en-US')}</b></div>)}</div>}
+    <p className="sub">Runs until {dLabel(st.end)}. Play money only. {CH_ODDS[st.key]}</p>
+    <button className="linkb" onClick={() => M.stopChallenge()}>End challenge</button></div>
+}
+
 export function TicketsView({ openBuilder }) {
   const [sug, setSug] = useState(false); const [tools, setTools] = useState(false); const [move, setMove] = useState(false); const [tab, setTab] = useState('open')
   const rank = t => { const L = t.legs.map(M.legState); const r = M.settled(L); return r ? 3 : L.some(l => l.s && l.s.state === 'in') ? 0 : L.some(l => l.s && l.s.state !== 'pre') ? 1 : 2 }
@@ -259,6 +303,8 @@ export function TicketsView({ openBuilder }) {
     <Summary list={mine} />
     <div className="ttabs"><button className={tab === 'open' ? 'on' : ''} onClick={() => setTab('open')}>Open <span>{openT.length}</span></button><button className={tab === 'done' ? 'on' : ''} onClick={() => setTab('done')}>Finished <span>{doneT.length}</span></button></div>
     <div className="t3list">{list.length ? list.map((t, i) => <TicketStub key={t.id} t={t} i={i} />) : <div className="emptyc"><div className="big">🎟</div><p>{tab === 'open' ? 'No open tickets.' : 'No finished tickets yet.'}</p>{tab === 'open' && <button className="cta" onClick={openBuilder}>＋ Add ticket</button>}</div>}</div>
+    <Challenge />
+    <SugHistory />
     {suggested.length > 0 && <button className="fold" onClick={() => setSug(!sug)}>{sug ? '▴' : '▾'} Suggested tickets ({suggested.length})</button>}
     {sug && suggested.length > 0 && <div className="t3list">{suggested.map((t, i) => <TicketStub key={t.id} t={t} i={i} />)}</div>}
     <button className="fold" onClick={() => setMove(!move)}>{move ? '▴' : '▾'} Send my tickets to my phone or PC</button>

@@ -292,6 +292,15 @@ function applyNationalGames(games) {
   if (n) { ELO = Object.assign({}, ELO, { r: R, f: F, upto }); eloIdx(); }
   return n;
 }
+// a club's rating + form for the "why" panel
+function clubRating(lg, name) {
+  const T = CLUBS && CLUBS.teams && CLUBS.teams[lg];
+  const k = clubKey(lg, name);
+  if (!T || !k) return null;
+  const [r, f, y] = T[k];
+  const kp = CLUBS.kp || 25;
+  return { r, att: (f[0] + kp) / (f[1] + kp), def: (f[2] + kp) / (f[3] + kp), y: y ?? 1 };
+}
 const ratingsInfo = () => ({ nat: ELO.upto, club: CLUBS && CLUBS.upto });
 
-export { applyClubSeason, applyNationalGames, ratingsInfo, eloOf, eloKey, formX, eloLam, dcLam, clubKey, clubLam, cardsOf, eloK, updateElo, loadRatings };
+export { clubRating, applyClubSeason, applyNationalGames, ratingsInfo, eloOf, eloKey, formX, eloLam, dcLam, clubKey, clubLam, cardsOf, eloK, updateElo, loadRatings };

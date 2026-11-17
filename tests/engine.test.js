@@ -95,7 +95,8 @@ describe('ready combinations', () => {
     const C = M.combos('20261116')
     expect(C.length).toBeGreaterThan(0)
     for (const c of C.filter(c => !c.wait)) {
-      expect(c.fair).toBeGreaterThanOrEqual(4)
+      if (c.id === 'safe3') expect(c.legs.length).toBe(3)
+      else expect(c.fair).toBeGreaterThanOrEqual(4)
       expect(new Set(c.legs.map(l => l.eid)).size).toBe(c.legs.length)
       expect(c.legs.every(l => M.shown(l.n))).toBe(true)
       if (c.id === 'f9') expect(c.legs.length).toBe(9)
@@ -149,5 +150,35 @@ describe('this season replay', () => {
     expect(n).toBe(1)
     expect(R.clubKey('eng.1', 'Brand New FC')).toBe('Brand New FC')
     expect(R.clubLam({ lg: 'eng.1', h: 'Arsenal', a: 'Brand New FC' })[0]).toBeGreaterThan(1.5)
+  })
+})
+
+describe('suggestion history, challenge and why', () => {
+  it('keeps the 17 Nov suggestions with their results', () => {
+    const H = M.sugHistory().filter(x => x.date === '20261117')
+    expect(H.find(x => x.cid === 'gol').res).toBe('WON')
+    expect(H.find(x => x.cid === 'b6').res).toBe('LOST')
+    const r = M.sugRecord(); expect(r.won).toBeGreaterThanOrEqual(1); expect(r.n).toBeGreaterThanOrEqual(4)
+  })
+  it('records a ticket only before kick-off, once', () => {
+    const n0 = M.sugHistory().length
+    const pre = M.DATA.M.filter(m => M.S(m.eid).state === 'pre').slice(0, 2)
+    if (pre.length === 2) {
+      const c = { id: 'test', title: 'T', fair: 3, legs: pre.map(m => ({ eid: m.eid, lg: m.lg, n: 'Over 1.5', p: .8 })) }
+      const d = M.nextYmd('20990101')
+      M.recordSuggestions(d, [c]); M.recordSuggestions(d, [c])
+      expect(M.sugHistory().length).toBe(n0 + 1)
+    }
+  })
+  it('challenge starts with play money and reports the bank', () => {
+    M.startChallenge(10000, 'steady')
+    const st = M.challengeState(); expect(st.bank).toBe(10000); expect(st.mode.cid).toBe('safe3')
+    M.stopChallenge(); expect(M.challengeState()).toBeNull()
+  })
+  it('explains a prediction in plain words', () => {
+    const w = M.whyOf(eid)
+    expect(w.verdict.length).toBeGreaterThan(5)
+    expect(w.pts.some(p => p.k === 'goals')).toBe(true)
+    expect(w.how.length).toBe(4)
   })
 })

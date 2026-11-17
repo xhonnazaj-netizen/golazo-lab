@@ -3,10 +3,12 @@ import DATA from './data/match-data.js';
 const PERSONAL = Object.values(import.meta.glob('./data/personal.local.js', { eager: true }))[0];
 if (PERSONAL && PERSONAL.default && PERSONAL.default.T) DATA.T = PERSONAL.default.T;
 import { COMBO_REC } from './data/combo-record.js';
+import SUG_SEED from './data/sug-seed.js';
+import { teamInfo as tdbInfo, h2h as tdbH2H, rankOf as tdbRank } from './model/teamdb.js';
 import { LS } from './util/storage.js';
 import { BASE, W, J, lim } from './data/provider.js';
 import { rnd, pois, gam, bs, pp, gridOf, pdev, priorFrom, clamp } from './model/math.js';
-import { eloOf, eloLam, clubLam, cardsOf, updateElo, loadRatings, applyClubSeason, applyNationalGames, ratingsInfo } from './model/ratings.js';
+import { eloOf, eloKey, formX, eloLam, clubLam, clubKey, clubRating, cardsOf, updateElo, loadRatings, applyClubSeason, applyNationalGames, ratingsInfo } from './model/ratings.js';
 import { markets, marketsShown, shown, predictability, nice } from './model/markets.js';
 /* Golazo Lab engine: data, models, live polling, tickets. UI lives in React components. */
 const UI = { status: "Connecting…", ok: true, toasts: [], goal: null };
@@ -1388,12 +1390,18 @@ function bookOdds(m, n) {
   }
   return null;
 }
-// value = our % is clearly above the bookmaker's: their odds pay more than the bet is worth
+// agreement with the bookies. Tested on 5,202 club games with real odds: when our % and the bookies' % agree,
+// short tickets came out about even; when we disagreed, the bookies were usually right. So "agree" is a safety mark.
 function valueOf(m, n, p) {
   const b = bookOdds(m, n);
   if (!b) return null;
   const ev = b.o ? p * b.o : null;
-  return { book: b.p, odds: b.o, diff: p - b.p, ev, value: ev ? ev >= 1.05 : p - b.p >= 0.05 };
+  return { book: b.p, odds: b.o, diff: p - b.p, ev, agree: Math.abs(p - b.p) <= 0.05 || (p >= 0.6 && b.p >= 0.6), value: false };
+}
+// the % used to BUILD tickets: the lower of ours and the bookies' when both exist (tested: much better tickets)
+function safeP(m, n, p) {
+  const b = bookOdds(m, n);
+  return b ? Math.min(p, b.p) : p;
 }
 // the bookmaker the user plays at (only a name for labels; nothing is sent there)
 let BOOK = LS.get("mb_book", "1win") || "1win";
@@ -1405,6 +1413,14 @@ function setBook(v) {
 const bookName = () => BOOK;
 function ymdOf(d) {
   return d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
+}
+// load a day's games without changing the day shown on Today
+async function loadDayData(date) {
+  if (!DAYLOAD[date]) {
+    DAYLOAD[date] = 1;
+    await Promise.all(LEAGUES.map(([lg]) => pollBoard(lg, date)));
+  }
+  emit();
 }
 async function loadDay(date) {
   DAY = date;
@@ -1494,11 +1510,12 @@ function combos(date) {
       names(m).forEach(([n, ty]) => {
         const x = L.find((k) => k.n === n);
         if (!x) return;
-        const p = frac(R, x.f);
-        if (p >= lo && p <= hi) out.push({ eid, n, p, lg, name, ty });
+        const p = frac(R, x.f),
+          r = safeP(m, n, p);
+        if (r >= lo && r <= hi) out.push({ eid, n, p, r, lg, name, ty });
       });
     });
-    return out.sort((a, b) => b.p - a.p);
+    return out.sort((a, b) => b.r - a.r);
   };
   // one bet per game, highest % first, at most `maxper` of one kind; stop when total odds reach `target`
   const take = (L, target, maxper, maxlegs = 10) => {
@@ -1577,9 +1594,10 @@ function combos(date) {
   let s6 = 0;
   while (b6.length - s6 >= 6 && 1 / b6.slice(s6, s6 + 6).reduce((a, x) => a * x.p, 1) < 4) s6++;
   mk("b6", "💎 Best 6", "6 games, the best-paying bet we still like", b6.length - s6 >= 6 ? b6.slice(s6, s6 + 6) : []);
+  mk("safe3", "🛡 Safe 3", "3 strongest favourites – the best odds zone", exact(cand(W, 0.6, 0.95), 3, 99, 1));
   mk("fav", "👑 Favourites 4+", "the strongest teams to win (W1 / W2)", take(cand(W, 0.55, 0.9), 4, 99));
   mk("gol", "⚽ Goals 4+", "only Total Over / Under bets", take(cand((m) => [["Over 1.5", "o15"], ["Over 2.5", "o25"], ["Under 3.5", "u35"], ["Under 2.5", "u25"], ...SC(m)], 0.6, 0.9), 4, 3));
-  mk("big", "💰 Big payout 10+", "fewer, riskier bets", take(cand((m) => [...W(m), ...DC(m), ...SC(m)], 0.45, 0.7), 10, 99));
+  mk("big", "🎰 Big payout 10+", "fewer, riskier bets", take(cand((m) => [...W(m), ...DC(m), ...SC(m)], 0.45, 0.7), 10, 99));
   return C;
 }
 function useCombo(L) {
@@ -1742,6 +1760,196 @@ function myTilt(n) {
   const g = myBetStats().find((x) => x.k === betKind(n));
   if (!g || g.ne < 6) return 1;
   return clamp((g.w + 2) / (g.exp + 2), 0.9, 1.1);
+}
+// ---- history of the tickets the app suggested: saved before kick-off, settled at the final whistle ----
+let SUG = (() => {
+  const s = LS.get("mb_sug", []);
+  const ids = new Set(s.map((x) => x.id));
+  return SUG_SEED.filter((x) => !ids.has(x.id)).concat(s);
+})();
+const saveSug = () => LS.set("mb_sug", SUG.filter((x) => !SUG_SEED.some((y) => y.id === x.id)).slice(-400));
+function recordSuggestions(date, C) {
+  if (date < ymdOf(new Date())) return;
+  let ch = false;
+  C.forEach((c) => {
+    if (c.wait || !c.legs || !c.legs.length) return;
+    const id = date + "|" + c.id;
+    if (SUG.some((x) => x.id === id)) return;
+    if (!c.legs.every((l) => S(l.eid).state === "pre")) return;
+    SUG.push({ id, date, cid: c.id, title: c.title, fair: +c.fair.toFixed(2), t: Date.now(), legs: c.legs.map((l) => ({ eid: l.eid, lg: l.lg, n: l.n, p: +l.p.toFixed(3) })) });
+    ch = true;
+  });
+  if (ch) saveSug();
+}
+function sugStatus(x) {
+  if (x.res) return { res: x.res, legs: x.legs.map((l) => ({ ...l, st: l.ok ? "won" : "lost" })) };
+  const legs = x.legs.map((l) => {
+    const ls = legState(l),
+      s = ls.s;
+    const st = !s ? "wait" : s.state === "post" ? (ls.p >= 0.5 ? "won" : "lost") : s.state === "in" ? (ls.p >= 0.995 ? "won" : ls.p <= 0.005 ? "lost" : "live") : "wait";
+    return { ...l, st, now: ls.p };
+  });
+  const res = legs.some((l) => l.st === "lost") ? "LOST" : legs.every((l) => l.st === "won") ? "WON" : legs.some((l) => l.st === "live" || l.st === "won") ? "LIVE" : "WAITING";
+  if ((res === "WON" || (res === "LOST" && legs.every((l) => l.st === "won" || l.st === "lost"))) && !x.res && legs.every((l) => l.st === "won" || l.st === "lost")) {
+    x.res = res;
+    x.legs = legs.map((l) => ({ eid: l.eid, lg: l.lg, n: l.n, p: l.p, ok: l.st === "won" ? 1 : 0 }));
+    saveSug();
+  }
+  return { res, legs };
+}
+const HISTLOAD = {};
+async function loadHistory() {
+  const dates = [...new Set(SUG.filter((x) => !x.res).map((x) => x.date))];
+  for (const d of dates) {
+    if (HISTLOAD[d] || DAYLOAD[d]) continue;
+    HISTLOAD[d] = 1;
+    await Promise.all(LEAGUES.map(([lg]) => pollBoard(lg, d)));
+  }
+  emit();
+}
+function sugHistory() {
+  return SUG.slice()
+    .sort((a, b) => (a.date === b.date ? (a.t || 0) - (b.t || 0) : a.date < b.date ? 1 : -1))
+    .map((x) => ({ ...x, ...sugStatus(x) }));
+}
+function sugRecord() {
+  const H = sugHistory().filter((x) => x.res === "WON" || x.res === "LOST");
+  const won = H.filter((x) => x.res === "WON");
+  return { n: H.length, won: won.length, lost: H.length - won.length, back: won.reduce((a, x) => a + bookPay(x), 0), staked: H.length };
+}
+// what 1win would roughly pay: our odds minus the bookie's cut (about 5% per bet, measured on 5,202 games)
+const bookPay = (x) => x.fair * Math.pow(0.95, x.legs.length);
+
+// ---- AI challenge: play money, the app stakes on its own suggested tickets by a fixed rule ----
+const CH_MODES = {
+  steady: { cid: "safe3", f: 0.1, name: "Steady", desc: "10% of the money each day on Safe 3" },
+  bold: { cid: "fav", f: 0.1, name: "Bold", desc: "10% each day on Favourites 4+" },
+  chase: { cid: "safe3", f: 1, until: 10, name: "Chase 10x", desc: "everything on Safe 3 every day until 10x – or nothing" },
+};
+let CH = LS.get("mb_ch", null);
+function startChallenge(start, mode) {
+  CH = { start: +start, mode, from: ymdOf(new Date()), t: Date.now() };
+  LS.set("mb_ch", CH);
+  emit();
+}
+function stopChallenge() {
+  CH = null;
+  LS.set("mb_ch", null);
+  emit();
+}
+function challengeState() {
+  if (!CH) return null;
+  const M_ = CH_MODES[CH.mode] || CH_MODES.steady;
+  let bank = CH.start,
+    done = null;
+  const log = [];
+  const days = sugHistory()
+    .filter((x) => x.cid === M_.cid && x.date >= CH.from)
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+  const end = ymdOf(new Date(new Date(+CH.from.slice(0, 4), +CH.from.slice(4, 6) - 1, +CH.from.slice(6, 8) + 30)));
+  let pending = null;
+  for (const x of days) {
+    if (x.date >= end || done) break;
+    const stake = Math.round(bank * M_.f);
+    const odds = +bookPay(x).toFixed(2);
+    if (x.res === "WON" || x.res === "LOST") {
+      const win = x.res === "WON" ? Math.round(stake * odds) : 0;
+      bank = bank - stake + win;
+      log.push({ date: x.date, title: x.title, stake, odds, res: x.res, bank });
+      if (M_.until && bank >= CH.start * M_.until) done = "GOAL";
+      if (bank < 50) done = "BUST";
+    } else pending = { date: x.date, title: x.title, stake, odds, res: x.res, legs: x.legs };
+  }
+  if (!done && ymdOf(new Date()) >= end) done = "END";
+  return { ...CH, mode: M_, key: CH.mode, bank, log, pending: done ? null : pending, done, end };
+}
+
+// ---- why this prediction: what we looked at, in plain words ----
+function whyOf(eid) {
+  const m = byE[eid];
+  if (!m) return null;
+  const R = simOf(eid);
+  const H = frac(R, (R, n) => R.GH[n] > R.GA[n]),
+    D = frac(R, (R, n) => R.GH[n] === R.GA[n]),
+    A = 1 - H - D;
+  const nat = eloOf(m.h) != null && eloOf(m.a) != null;
+  const club = !nat && clubKey(m.lg, m.h) && clubKey(m.lg, m.a);
+  const pts = [];
+  const team = (name, side) => {
+    const o = { name, side };
+    if (nat) {
+      const k = eloKey(name);
+      o.rank = tdbRank(k);
+      const [att, def] = formX(k);
+      o.att = att;
+      o.def = def;
+      const I = tdbInfo(k, "nt", 6);
+      if (I) o.form = I.last.slice(0, 5);
+    } else if (club) {
+      const cr = clubRating(m.lg, name);
+      if (cr) {
+        o.rating = cr.r;
+        o.att = cr.att;
+        o.def = cr.def;
+        o.yf = cr.y;
+      }
+    }
+    const f = FORM[m.eid] && FORM[m.eid][side === 0 ? "h" : "a"];
+    if (!o.form && f) o.form = f;
+    return o;
+  };
+  const th = team(m.h, 0),
+    ta = team(m.a, 1);
+  // 1. who is stronger
+  const fav = H > A ? th : ta,
+    gap = Math.abs(H - A);
+  if (nat && th.rank && ta.rank) pts.push({ k: "strength", t: `${m.h} are #${th.rank.rank} in our world ranking, ${m.a} #${ta.rank.rank}.` });
+  else if (club && th.rating && ta.rating) {
+    const d = th.rating - ta.rating;
+    pts.push({ k: "strength", t: Math.abs(d) < 40 ? `${m.h} and ${m.a} are about as strong as each other this season.` : `${d > 0 ? m.h : m.a} are clearly the stronger team on this season's results.` });
+  } else pts.push({ k: "strength", t: `We have little history for these teams, so we lean on their league's averages.` });
+  // 2. form
+  [th, ta].forEach((x) => {
+    const bits = [];
+    if (x.att != null) bits.push(x.att > 1.12 ? "scoring more than usual lately" : x.att < 0.88 ? "scoring less than usual lately" : "");
+    if (x.def != null) bits.push(x.def > 1.12 ? "letting in more than usual" : x.def < 0.88 ? "very tight at the back" : "");
+    const b = bits.filter(Boolean);
+    if (x.form && x.form.length) {
+      const fs = x.form.map((g) => g.r || g).join("");
+      pts.push({ k: "form", t: `${x.name}: last games ${fs}${b.length ? " – " + b.join(", ") : ""}.`, form: x.form });
+    } else if (b.length) pts.push({ k: "form", t: `${x.name}: ${b.join(", ")}.` });
+  });
+  // 3. home / neutral
+  pts.push({ k: "home", t: m.neu ? "Neutral ground – no home advantage." : `${m.h} play at home – that's worth about a third of a goal.` });
+  // 4. head to head (national teams)
+  if (nat) {
+    const h2 = tdbH2H(eloKey(m.h), eloKey(m.a), "nt", 5);
+    if (h2 && h2.all) pts.push({ k: "h2h", t: `Last ${h2.all} meeting${h2.all > 1 ? "s" : ""} since 2018: ${m.h} won ${h2.w}, ${h2.d} draw${h2.d === 1 ? "" : "s"}, ${m.a} won ${h2.l}. (Counts only a little – old games say less than form.)` });
+  }
+  // 5. goals and cards we expect
+  const tg = m.lam[0] + m.lam[1];
+  pts.push({ k: "goals", t: `We expect about ${tg < 1.8 ? "1–2" : tg < 2.6 ? "2–3" : "3 or more"} goals: ${m.h} around ${m.lam[0].toFixed(1)}, ${m.a} around ${m.lam[1].toFixed(1)}.` });
+  if (m.y) pts.push({ k: "cards", t: `Yellow cards: about ${(m.y[0] + m.y[1]).toFixed(1)} in the game${club && (th.yf > 1.15 || ta.yf > 1.15) ? ` – ${th.yf > ta.yf ? m.h : m.a} pick up more cards than most` : ""}.` });
+  // 6. bookies
+  const bh = bookOdds(m, m.h + " win"),
+    ba = bookOdds(m, m.a + " win");
+  if (bh && ba) {
+    const d = H - bh.p;
+    pts.push({ k: "book", t: Math.abs(d) <= 0.05 ? "The bookies see it almost the same way ✓" : `The bookies rate ${d > 0 ? m.a : m.h} a bit higher than we do – when we disagree, take extra care.` });
+  }
+  const st = S(eid);
+  const now = st.state === "in" ? `${st.h > st.a ? m.h + " lead" : st.h < st.a ? m.a + " lead" : "Level"} ${st.h}-${st.a} at ${st.clock || st.min + "'"} – ` : "";
+  const verdict = now + (gap < 0.1 ? (now ? "a close game, no clear favourite." : "A close game – no clear favourite.") : `${fav.name} are ${gap > 0.35 ? "clear" : "slight"} favourites${now ? " now" : ""}.`);
+  return {
+    H, D, A, verdict, pts, nat, club,
+    how: [
+      "We rate every team from all its past results – wins against strong teams and big wins count more.",
+      "Recent games count more than old ones, so a team in form moves up fast.",
+      "We add home advantage, then play this match 20,000 times on the computer.",
+      "Our % = how often each result happened in those 20,000 games.",
+    ],
+    data: nat ? "National teams: every international since 1872, updated with this season's games." : club ? "Clubs: 19,760 games from the 5 big leagues since 2015, plus this season's results." : "League averages.",
+  };
 }
 // ---- best picks per team (for people building their own tickets) ----
 function bestPicks(eid) {
@@ -1970,8 +2178,9 @@ function liveBets(m, s) {
     .map((x) => {
       const p = frac(R, x.f);
       const od = live && x.k ? lo.o[x.k] : null;
-      const ev = od ? p * od - 1 : null;
-      return { n: x.n, k: x.k, p, fair: 1 / Math.max(p, 1e-6), min: 1.05 / Math.max(p, 1e-6), od, ev, need: needInfo(m.eid, x.n) };
+      const ev = od ? p * od - 1 : null,
+        vv = valueOf(m, x.n, p);
+      return { ag: !!(vv && vv.agree && od), n: x.n, k: x.k, p, fair: 1 / Math.max(p, 1e-6), min: 1.05 / Math.max(p, 1e-6), od, ev, need: needInfo(m.eid, x.n) };
     })
     .filter((b) => b.p > 0.03 && b.p < 0.97)
     .sort((a, b) => (b.ev != null ? b.ev : -1) - (a.ev != null ? a.ev : -1) || Math.abs(a.p - 0.55) - Math.abs(b.p - 0.55));
@@ -1988,7 +2197,7 @@ function bestOddsNow(eid, k = 5) {
     L = marketsShown(m).map((x) => {
       const p = frac(R, x.f),
         v = valueOf(m, x.n, p);
-      return { n: x.n, p, fair: 1 / Math.max(p, 1e-6), od: v && v.odds, ev: v && v.ev != null ? v.ev - 1 : null };
+      return { n: x.n, p, fair: 1 / Math.max(p, 1e-6), od: v && v.odds, ev: v && v.ev != null ? v.ev - 1 : null, ag: !!(v && v.agree) };
     });
   }
   // highest odds first, at most 2 of one kind (1X2 / goals / cards) so the list stays varied
@@ -2548,6 +2757,7 @@ export {
   predictability,
   bestPicks,
   loadDay,
+  loadDayData,
   dayGames,
   pickList,
   combos,
@@ -2590,6 +2800,17 @@ export {
   setBook,
   bookName,
   myBetStats,
+  safeP,
+  sugHistory,
+  sugRecord,
+  loadHistory,
+  recordSuggestions,
+  bookPay,
+  startChallenge,
+  stopChallenge,
+  challengeState,
+  CH_MODES,
+  whyOf,
   myTilt,
   loadSeason,
   betKind,

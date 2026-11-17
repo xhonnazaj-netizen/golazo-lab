@@ -40,7 +40,7 @@ export function Scoreboard(){
       <div className="sbt r"><span>{m.a}</span><img src={M.logo(m,1)} alt=""/></div></div>
     <div className="wbar big"><div style={{width:H*100+'%',background:ch}}/><div style={{width:D*100+'%',background:'#556'}}/><div style={{width:A*100+'%',background:ca}}/></div>
     <div className="wl big"><span><b className="tp">{pct(H)}</b> W1 · {m.hA}</span><span>X · Draw {pct(D)}</span><span>W2 · {m.aA} <b className="tp">{pct(A)}</b></span></div>
-    <div className="sub" style={{textAlign:'center',marginTop:4}}>Our own % from our team ratings{s.state==='in'?' and what is happening now':''}</div>
+    <div className="sub" style={{textAlign:'center',marginTop:4}}>Our own % from our team ratings{s.state==='in'?' and what is happening now':''}<button className="whybtn" onClick={()=>{const el=document.getElementById('why');if(el)el.scrollIntoView({behavior:'smooth',block:'start'})}}>Why? ›</button></div>
   </div>
 }
 
@@ -137,6 +137,12 @@ function Playing(){const m=M.byE[E.SEL],s=M.S(E.SEL);if(s.state!=='in'||!M.PREF.
     <div className="sub" style={{margin:'4px 0 8px'}}>{share>.65?<><b style={{color:ch}}>{m.h}</b> on top in the last 10 min</>:share<.35?<><b style={{color:ca}}>{m.a}</b> on top in the last 10 min</>:'Even in the last 10 min'}</div>
     <div className="pl3"><span/><b>{m.hA}</b><b>{m.aA}</b><span>Big chances (last 15 min)</span><span>{s.shots.filter(z=>z.side===0&&z.xg>=.15).length} ({s.shots.filter(z=>z.side===0&&z.xg>=.15&&z.mi>s.min-15).length})</span><span>{s.shots.filter(z=>z.side===1&&z.xg>=.15).length} ({s.shots.filter(z=>z.side===1&&z.xg>=.15&&z.mi>s.min-15).length})</span><span>Shots on goal</span><span>{sot[0]}</span><span>{sot[1]}</span><span>Yellow cards</span><span>{s.yh||0}</span><span>{s.ya||0}</span></div>
     <div className="sub" style={{marginTop:6,lineHeight:1.5}}><V x={s.xh} ex={exH} name={m.h}/><V x={s.xa} ex={exA} name={m.a}/></div></div>}
+/* why this prediction – what we looked at and how, in plain words */
+const WICON={strength:'💪',form:'📈',home:'🏟',h2h:'🤝',goals:'⚽',cards:'🟨',book:'📊'}
+export function WhyCard({eid}){const [,f]=useState(0);const m=M.byE[eid];useEffect(()=>{if(m)M.loadForm(m).then(()=>f(x=>x+1)).catch(()=>{})},[eid]);const w=M.whyOf(eid);if(!w)return null
+  return <div className="lvcard why" id="why"><h3>Why this prediction?</h3><div className="wv">{w.verdict} <span className="sub">W1 {pct(w.H)} · X {pct(w.D)} · W2 {pct(w.A)}</span></div>
+    {w.pts.map((x,i)=><div key={i} className="wp"><span>{WICON[x.k]||'•'}</span><span>{x.t}</span></div>)}
+    <details className="how"><summary><b>How we work it out</b></summary><ol>{w.how.map((h,i)=><li key={i}>{h}</li>)}</ol><div className="sub" style={{marginTop:6}}>Data: {w.data}</div></details></div>}
 /* right of the stadium: live commentary + best odds now */
 const FICON={goal:'⚽',red:'🟥',yel:'🟨',sub:'🔁',shot:'🎯'}
 function Commentary(){const s=M.S(E.SEL),m=M.byE[E.SEL];const F=(s.feed&&s.feed.length?s.feed:(s.ev||[]).slice().reverse().map(e=>({c:e.c,tx:e.tx||e.pl.join(', '),k:/goal/.test(e.ty)?'goal':/red/.test(e.ty)?'red':/yellow/.test(e.ty)?'yel':/substitution/.test(e.ty)?'sub':''})))
@@ -146,9 +152,9 @@ function Commentary(){const s=M.S(E.SEL),m=M.byE[E.SEL];const F=(s.feed&&s.feed.
 function BestOdds(){const m=M.byE[E.SEL],s=M.S(E.SEL);if(!m||s.state==='post'||M.PREF.bets===false)return null;const L=M.bestOddsNow(E.SEL,6);const B=M.bookName()
   return <div className="lvcard"><h3>Best odds now <span className="sub">{s.state==='in'?'live':'before the game'}</span></h3>
     <div className="lb lbh"><span>Bet</span><span>Our %</span><span>Our odds</span><span>Bookies</span></div>
-    {L.length?L.map(b=>{const on=M.inDraft(E.SEL,b.n);return <button key={b.n} className={'lb lbb'+(b.ev!=null&&b.ev>.03?' good':'')+(on?' on':'')} onClick={()=>M.addPick(E.SEL,b.n)} title={on?'Remove from my new ticket':'Add to my new ticket'}><span>{on?'✓ ':'＋ '}{M.nice(b.n,m)}{b.need&&<span className="need"> · {b.need.txt}</span>}</span><span className="orb">{pct(b.p)}</span><span className="orb">{b.fair.toFixed(2)}</span><span className={'orb '+(b.ev!=null&&b.ev>.03?'ok':'sub')}>{b.od?b.od.toFixed(2)+(b.ev>.03?' 💰':''):'–'}</span></button>}):<p className="sub">No bet we like right now.</p>}
-    <p className="sub" style={{margin:'8px 0 0',lineHeight:1.5}}>Highest odds first, only bets with our % 55% or more. Play only if {B} pays at least “our odds”. 💰 = the bookies pay more than it is worth.</p></div>}
-export function LivePane({onPick}){return <div className="livegrid"><div className="lp-pitch lcol"><Pitch onPick={onPick}/></div><div className="rcol" id="livex"><Commentary/><BestOdds/></div><div className="lp-rest lcol"><LiveAdvisor eid={E.SEL}/><Playing/><Momentum/></div></div>}
+    {L.length?L.map(b=>{const on=M.inDraft(E.SEL,b.n);return <button key={b.n} className={'lb lbb'+(b.ev!=null&&b.ev>.03?' good':'')+(on?' on':'')} onClick={()=>M.addPick(E.SEL,b.n)} title={on?'Remove from my new ticket':'Add to my new ticket'}><span>{on?'✓ ':'＋ '}{M.nice(b.n,m)}{b.need&&<span className="need"> · {b.need.txt}</span>}</span><span className="orb">{pct(b.p)}</span><span className="orb">{b.fair.toFixed(2)}</span><span className={'orb '+(b.ag?'ok':'sub')}>{b.od?b.od.toFixed(2)+(b.ag?' ✓':''):'–'}</span></button>}):<p className="sub">No bet we like right now.</p>}
+    <p className="sub" style={{margin:'8px 0 0',lineHeight:1.5}}>Highest odds first, only bets with our % 55% or more. Play only if {B} pays at least “our odds”. ✓ = the bookies agree with us (safer).</p></div>}
+export function LivePane({onPick}){return <div className="livegrid"><div className="lp-pitch lcol"><Pitch onPick={onPick}/></div><div className="rcol" id="livex"><Commentary/><BestOdds/></div><div className="lp-rest lcol">{M.S(E.SEL).state==='pre'&&<WhyCard eid={E.SEL}/>}<LiveAdvisor eid={E.SEL}/><Playing/><Momentum/>{M.S(E.SEL).state!=='pre'&&<WhyCard eid={E.SEL}/>}</div></div>}
 
 /* ---------- all markets ---------- */
 export function MarketsPane({onPick}){const[tab,setTab]=useState('Result');const m=M.byE[E.SEL],s=M.S(E.SEL),R=M.simOf(E.SEL);const lo=M.LO[E.SEL];const[busy,setBusy]=useState(false)
@@ -158,13 +164,13 @@ export function MarketsPane({onPick}){const[tab,setTab]=useState('Result');const
     ;['h','a'].forEach(side=>(lu[side].players||[]).forEach(p=>{const x=sh[p.id];if(!x)return;const l=side==='h'?lh:la;L.push([p,side,1-Math.exp(-l*x.g),1-Math.exp(-l*x.a)])}));L.sort((a,b)=>b[2]-a[2])
     rows=L.slice(0,16).map(([p,side,pg,pa])=><div key={p.id} className="mk" style={{cursor:'pointer'}} onClick={()=>onPick(p,side)}><span>{p.name}<br/><span className="sub">{side==='h'?m.hA:m.aA} · assist {pct(pa)}</span></span><span className="p">{pct(pg)}</span><span className="o">{fo(pg)}</span><span className="b">–</span><span/></div>)}}
   else{let L=M.marketsShown(m).filter(x=>x.g===tab).map(x=>({...x,p:M.frac(R,x.f)+(x.pu?M.frac(R,x.pu):0)}))
-    rows=L.map(x=>{const od=x.k&&((lo&&lo.o[x.k])||(m.odds&&m.odds[x.k]));const ev=od?x.p*od-1:null
-      return <div key={x.n} className="mk"><span>{M.nice(x.n,m)}</span><span className="p">{pct(x.p)}</span><span className="o">{fo(x.p)}</span><span className={'b '+(ev!=null&&ev>.03?'val':'neg')}>{od?od.toFixed(2)+(ev>.03?' 💰':''):'–'}</span>
+    rows=L.map(x=>{const od=x.k&&((lo&&lo.o[x.k])||(m.odds&&m.odds[x.k]));const ev=od?x.p*od-1:null;const vv=M.valueOf(m,x.n,x.p);const ag=!!(vv&&vv.agree&&od)
+      return <div key={x.n} className="mk"><span>{M.nice(x.n,m)}</span><span className="p">{pct(x.p)}</span><span className="o">{fo(x.p)}</span><span className={'b '+(ag?'val':'neg')}>{od?od.toFixed(2)+(ag?' ✓':''):'–'}</span>
         <button className="add" title="Add to a new ticket" onClick={()=>{if(!E.DRAFT.some(l=>l.eid===E.SEL&&l.n===x.n)){M.setDraft([...E.DRAFT,{eid:E.SEL,lg:m.lg,date:E.CUR.date,n:x.n,o:null}]);M.alertMsg('info','Added to your new ticket: '+m.hA+'–'+m.aA+' '+M.nice(x.n,m))}}}>+</button></div>})}
   return <div><div className="tabs">{G.map(g=><button key={g} className={g===tab?'on':''} onClick={()=>setTab(g)}>{g}</button>)}</div>
     <div className="mk" style={{color:'var(--mut)',fontSize:11,border:0}}><span>Bet</span><span style={{textAlign:'right'}}>Our %</span><span style={{textAlign:'right'}}>Our odds</span><span style={{textAlign:'right'}}>{lo&&lo.live?'Bookies (live)':'Bookies'}</span><span/></div>
     {rows}
-    <p className="sub" style={{margin:'8px 0 0'}}>{M.hasOddsKey()&&<button style={{fontSize:11,padding:'3px 8px'}} disabled={busy} onClick={async()=>{setBusy(true);await M.refreshOdds();setBusy(false)}}>{busy?'Loading…':'Refresh live odds'}</button>} {M.hasOddsKey()&&E.LOC!=null?`Live odds credits left: ${E.LOC} · `:''} Our % is our own. Bookies’ odds are only to compare · 💰 they pay more than it is worth · + adds the bet to your ticket</p></div>}
+    <p className="sub" style={{margin:'8px 0 0'}}>{M.hasOddsKey()&&<button style={{fontSize:11,padding:'3px 8px'}} disabled={busy} onClick={async()=>{setBusy(true);await M.refreshOdds();setBusy(false)}}>{busy?'Loading…':'Refresh live odds'}</button>} {M.hasOddsKey()&&E.LOC!=null?`Live odds credits left: ${E.LOC} · `:''} Our % is our own. Bookies’ odds are only to compare · ✓ the bookies agree with us · + adds the bet to your ticket</p></div>}
 
 /* ---------- stats / events / lineups ---------- */
 export function StatsPane(){const s=M.S(E.SEL),m=M.byE[E.SEL],[ch,ca]=M.colors(m),h=s.boxh,a=s.boxa

@@ -44,7 +44,7 @@ function MatchRow({ eid }) {
     <div className="atri"><span>W1 {m.hA} <b>{M.pct(H)}</b></span><span>X <b>{M.pct(D)}</b></span><span>W2 {m.aA} <b>{M.pct(A)}</b></span></div></div>
 }
 function PickList({ L, add = true }) {
-  return <div className="abox">{L.map((x, i) => { const m = M.byE[x.eid]; const v = M.valueOf(m, x.n, x.p); return <div key={i} className="arow"><span><b>{nn(x.eid, x.n)}</b><span className="sub"> {m.hA}–{m.aA}{x.need ? ' · ' + x.need.txt : ''}</span></span><b>{M.pct(x.p)}</b><span className="sub">our odds {(1 / x.p).toFixed(2)}{v && v.value ? ' 💰' : ''}</span>
+  return <div className="abox">{L.map((x, i) => { const m = M.byE[x.eid]; const v = M.valueOf(m, x.n, x.p); return <div key={i} className="arow"><span><b>{nn(x.eid, x.n)}</b><span className="sub"> {m.hA}–{m.aA}{x.need ? ' · ' + x.need.txt : ''}</span></span><b>{M.pct(x.p)}</b><span className="sub">our odds {(1 / x.p).toFixed(2)}{v && v.agree ? ' ✓' : ''}</span>
     {add && <button className="aadd" title="Add to my ticket" onClick={() => addDraft([x])}>＋</button>}</div> })}</div>
 }
 function addDraft(L) {
@@ -59,7 +59,7 @@ function bestPicks(filter, lo = .6, hi = .93) {
 function onePerMatch(L, k) { const seen = new Set(), r = []; for (const x of L) { if (seen.has(x.eid)) continue; seen.add(x.eid); r.push(x); if (r.length >= k) break } return r }
 
 /* ---------- answers ---------- */
-const CHIPS = ['How strong is my ticket?', 'Fire 9', 'Best 6', 'Best goal bets', 'Cards bets', 'Value bets', 'Spain form', 'Top 20 teams', 'What wins for me?', 'What is X2?']
+const CHIPS = ['What should I bet now?', 'Ticket for tomorrow', 'How strong is my ticket?', 'Safest bets', 'Your suggestion history', 'AI challenge', 'Fire 9', 'Spain form', 'What is X2?']
 function aHelp() { return { text: 'I answer from this app’s own numbers and a database of ' + DBINFO.games.toLocaleString('en-US') + ' national-team games + 5 big leagues. Try:', chips: CHIPS } }
 
 function aCash() {
@@ -97,12 +97,12 @@ function aCombo(id) {
 
 function aValue() {
   const L = []
-  open(pool()).forEach(e => { const m = M.byE[e], R = M.simOf(e); M.marketsShown(m).forEach(x => { const p = M.frac(R, x.f); if (p < .5 || p > .93) return; const v = M.valueOf(m, x.n, p); if (v && v.value) L.push({ eid: e, n: x.n, p, v }) }) })
-  L.sort((a, b) => (b.v.ev || 1 + b.v.diff) - (a.v.ev || 1 + a.v.diff))
-  if (!L.length) return { text: 'No clear value right now: the bookies’ prices are close to our %. (Value only shows for games where we have bookie odds.)' }
-  return { node: <><div className="ah">Where the bookies pay more than it is worth</div>
-    <div className="abox">{onePerMatch(L, 6).map((x, i) => { const m = M.byE[x.eid]; return <div key={i} className="arow"><span><b>{nn(x.eid, x.n)}</b><span className="sub"> {m.hA}–{m.aA}</span></span><b>{M.pct(x.p)}</b><span className="sub">bookies {M.pct(x.v.book)}{x.v.odds ? ' @' + x.v.odds.toFixed(2) : ''} 💰</span><button className="aadd" onClick={() => addDraft([x])}>＋</button></div> })}</div>
-    <div className="sub">Our % is higher than what the bookies’ odds say. Check {B()}’s odds are similar before you bet.</div></> }
+  open(pool()).forEach(e => { const m = M.byE[e], R = M.simOf(e); M.marketsShown(m).forEach(x => { const p = M.frac(R, x.f); if (p < .6 || p > .93) return; const v = M.valueOf(m, x.n, p); if (v && v.agree && v.odds) L.push({ eid: e, n: x.n, p, v }) }) })
+  L.sort((a, b) => Math.min(b.p, b.v.book) - Math.min(a.p, a.v.book))
+  if (!L.length) return { text: 'No bets right now where we and the bookies clearly agree (we need bookie odds for that game).' }
+  return { node: <><div className="ah">Safest bets: we and the bookies agree ✓</div>
+    <div className="abox">{onePerMatch(L, 6).map((x, i) => { const m = M.byE[x.eid]; return <div key={i} className="arow"><span><b>{nn(x.eid, x.n)}</b><span className="sub"> {m.hA}–{m.aA}</span></span><b>{M.pct(x.p)}</b><span className="sub">bookies {M.pct(x.v.book)} @{x.v.odds.toFixed(2)} ✓</span><button className="aadd" onClick={() => addDraft([x])}>＋</button></div> })}</div>
+    <div className="sub">Tested on 5,202 club games: bets where both agree did clearly better than bets where we disagreed with the bookies.</div></> }
 }
 
 function aLive() {
@@ -162,7 +162,7 @@ function aMatch(eid) {
   const rows = [[`${m.h} or draw`], [`${m.a} or draw`], ['Over 1.5'], ['Over 2.5'], ['Under 3.5'], [`${m.h} over 0.5`], [`${m.a} over 0.5`], ['Over 3.5 yellows']].map(([n]) => [n, g(n)])
   const R = M.simOf(eid); const H = M.frac(R, (R, n) => R.GH[n] > R.GA[n]), A = M.frac(R, (R, n) => R.GH[n] < R.GA[n])
   const fav = H > A ? m.h : m.a, fp = Math.max(H, A)
-  return { node: <><MatchRow eid={eid} /><div className="abox">{rows.filter(r => r[1] != null).map(([n, p]) => { const v = M.valueOf(m, n, p); const nd = M.needInfo(eid, n); return <div key={n} className="arow"><span>{M.nice(n, m)}{nd ? <span className="sub"> · {nd.txt}</span> : null}</span><b>{p > .995 ? '✓' : M.pct(p)}</b><span className="sub">{p > .995 ? 'done' : p < .005 ? 'lost' : 'our odds ' + (1 / p).toFixed(2)}{v && v.value ? ' 💰' : ''}</span><button className="aadd" onClick={() => addDraft([{ eid, n, p }])}>＋</button></div> })}</div>
+  return { node: <><MatchRow eid={eid} /><div className="abox">{rows.filter(r => r[1] != null).map(([n, p]) => { const v = M.valueOf(m, n, p); const nd = M.needInfo(eid, n); return <div key={n} className="arow"><span>{M.nice(n, m)}{nd ? <span className="sub"> · {nd.txt}</span> : null}</span><b>{p > .995 ? '✓' : M.pct(p)}</b><span className="sub">{p > .995 ? 'done' : p < .005 ? 'lost' : 'our odds ' + (1 / p).toFixed(2)}{v && v.agree ? ' ✓' : ''}</span><button className="aadd" onClick={() => addDraft([{ eid, n, p }])}>＋</button></div> })}</div>
     <div>{fp > .6 ? `${fav} are clear favourites.` : fp > .45 ? `${fav} are slight favourites.` : 'Close game – no clear favourite.'}</div></>,
     chips: s.state === 'in' ? ['Live bets now', 'Should I take the money?'] : [`${m.h} v ${m.a} head to head`, 'Fire 9'], open: eid }
 }
@@ -201,15 +201,84 @@ function aAcc() {
     <div className="sub">No one wins every bet. Over many games, betting only when {B()} pays more than our odds is what counts.</div></> }
 }
 
+
+/* ---------- fluent answers ---------- */
+const today = () => { const d = new Date(); return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0') }
+const dayWord = d => d === today() ? 'today' : d === M.nextYmd(today()) ? 'tomorrow' : new Date(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6, 8)).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short' })
+function TicketBox({ c }) {
+  return <div className="abox"><b>{c.title}</b> <span className="sub">· {c.legs.length} bets · our odds {c.fair.toFixed(2)}</span><Strength st={c.st} small />
+    {c.legs.map((x, i) => { const m = M.byE[x.eid]; return <div key={i} className="arow"><span><b>{nn(x.eid, x.n)}</b><span className="sub"> {m.hA}–{m.aA} · {when(x.eid)}</span></span><b>{M.pct(x.p)}</b></div> })}
+    {c.rec && <div className="sub">Tested: won {c.rec[1]} of {c.rec[0]} days ({Math.round(c.rec[1] / c.rec[0] * 100)}%).</div>}
+    <button className="cta" style={{ marginTop: 6 }} onClick={() => { M.useCombo(c.legs); window.dispatchEvent(new Event('mb:builder')) }}>Use this ticket</button></div>
+}
+// "what should I bet now?" – live games first, then the next games, plus the ticket we'd play
+function aNow() {
+  const live = Object.keys(M.ST).filter(e => M.byE[e] && M.S(e).state === 'in')
+  const L = live.map(e => { const a = M.liveAdvice(e); return a && a.picks[0] ? { ...a.picks[0], eid: e } : null }).filter(Boolean)
+  const d = today(); const C = M.combos(d).filter(c => !c.wait)
+  const safe = C.find(c => c.id === 'safe3') || C[0]
+  const next = M.pickList(d, 'safe', .6, .95, undefined, true).slice(0, 4)
+  if (!L.length && !next.length && !C.length) return { text: 'Nothing left to play today. Want a ticket for tomorrow?', chips: ['Ticket for tomorrow', 'Top 20 teams'] }
+  return { node: <>
+    <div>{L.length ? `${L.length} game${L.length > 1 ? 's are' : ' is'} live right now – here’s what I like:` : 'Nothing live right now. Here’s what I like for the next games:'}</div>
+    {L.length > 0 && <><div className="ah">🔴 Live now</div><PickList L={L.slice(0, 4)} /></>}
+    {next.length > 0 && <><div className="ah">⏱ Coming up {dayWord(d)}</div><PickList L={next} /></>}
+    {safe && <><div className="ah">🎟 The ticket I’d play</div><TicketBox c={safe} /></>}
+    <div className="sub">Only bet if {B()} pays at least our odds. Small stakes – no bet is sure.</div></>, chips: ['Ticket for tomorrow', 'Safest bets', 'Why?', 'Fire 9'] }
+}
+// tickets for any day (today / tomorrow / a weekday) – loads that day's games first
+async function aDay(d, which) {
+  await M.loadDayData(d)
+  await new Promise(r => setTimeout(r, 400))
+  const C = M.combos(d).filter(c => !c.wait)
+  M.recordSuggestions(d, C)
+  if (!C.length) return { text: `No ready tickets for ${dayWord(d)} yet – not enough games in our competitions.`, chips: ['What should I bet now?'] }
+  const pick = which ? C.filter(c => c.id === which) : [C.find(c => c.id === 'safe3'), C.find(c => c.id === 'gol') || C.find(c => c.id === 'fav')].filter(Boolean)
+  const games = M.dayGames(d).length
+  return { node: <><div>{games} games {dayWord(d)}. {pick.length > 1 ? 'Two tickets: a short safe one and a 4+ one.' : 'Here it is:'}</div>{pick.map(c => <TicketBox key={c.id} c={c} />)}
+    <div className="sub">Also ready for {dayWord(d)}: {C.filter(c => !pick.includes(c)).map(c => c.title).join(' · ') || '–'}. The app saves these before kick-off and shows the results in My tickets.</div></>,
+    chips: C.filter(c => !pick.includes(c)).slice(0, 3).map(c => c.title.replace(/^\S+ /, '') + ' ' + dayWord(d)) }
+}
+function aWhy(eid) {
+  const w = M.whyOf(eid); if (!w) return null; const m = M.byE[eid]
+  return { node: <><div className="ah">Why {m.h} v {m.a}?</div><div className="abox"><b>{w.verdict}</b>{w.pts.map((x, i) => <div key={i} style={{ marginTop: 4 }}>• {x.t}</div>)}</div>
+    <div className="sub">How: {w.how.join(' ')}</div></>, open: eid, chips: [`${m.h} form`, `${m.h} v ${m.a} head to head`] }
+}
+function aHistory() {
+  const r = M.sugRecord(); const H = M.sugHistory().slice(0, 6)
+  if (!H.length) return { text: 'No suggested tickets saved yet – the app saves them every day before kick-off.' }
+  return { node: <><div className="ah">Our suggested tickets</div>{r.n > 0 && <div>Finished: <b>{r.n}</b> · won <b>{r.won}</b> · lost <b>{r.lost}</b>. With 1,000 on each you’d have about <b>{Math.round(r.back * 1000).toLocaleString('en-US')}</b> back from {(r.n * 1000).toLocaleString('en-US')}.</div>}
+    <div className="abox">{H.map(x => <div key={x.id} className="arow"><span><b>{x.title}</b><span className="sub"> {dayWord(x.date)}</span></span><span className={x.res === 'WON' ? 'ok' : x.res === 'LOST' ? 'ko' : 'sub'}>{x.res}</span></div>)}</div>
+    <div className="sub">Full list with every bet: My tickets → “Our suggested tickets”.</div></> }
+}
+function aChallenge() {
+  const st = M.challengeState()
+  if (!st) return { text: 'The AI challenge gives me play money for 30 days and I bet on my own tickets by a fixed rule. Start it in My tickets → 🤖 AI money challenge (5,000 to 50,000). Honest numbers from 3 seasons of real odds: steady betting kept the money about level; going all-in reached 10x in about 6 months of 100 and lost everything in the rest.' }
+  return { text: `Challenge (${st.mode.name}): started with CLP ${st.start.toLocaleString('en-US')}, now CLP ${st.bank.toLocaleString('en-US')} (x${(st.bank / st.start).toFixed(2)}).${st.pending ? ` Today: ${st.pending.title}, stake ${st.pending.stake.toLocaleString('en-US')}.` : ''}${st.done ? ' Finished: ' + st.done + '.' : ''}` }
+}
+function whenDay(q) {
+  if (/tomorrow|manana/.test(q)) return M.nextYmd(today())
+  if (/today|hoy|tonight|esta noche/.test(q)) return today()
+  const W = ['sunday|domingo', 'monday|lunes', 'tuesday|martes', 'wednesday|miercoles', 'thursday|jueves', 'friday|viernes', 'saturday|sabado']
+  const wi = W.findIndex(w => new RegExp('\\b(' + w + ')\\b').test(q)); if (wi < 0) return null
+  const d = new Date(); let k = (wi - d.getDay() + 7) % 7; if (k === 0) k = 7; d.setDate(d.getDate() + k)
+  return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0')
+}
+
 function answer(q0) {
   const q = norm(q0).replace(/^[¿¡\s"']+/, '').replace(/[?!.]+$/, '')
   if (!q.trim() || /^(help|ayuda|hi|hola|hello|hey|menu)\b/.test(q)) return aHelp()
   if (/^(what is|what does|que es|que significa|explain|explica)\b|\bmean(s)?\b/.test(q)) { const g = aGloss(q); if (g) return g }
   if (/corner|corne?r|esquina/.test(q)) return { text: 'We don’t suggest corners any more: too much luck. Try Total goals, 1X2 or yellow cards.', chips: ['Best goal bets', 'Cards bets'] }
   if (/strong|strength|fuerza|protect|proteg|cover|cubrir|weak|debil/.test(q)) return aStrength()
+  const day = whenDay(q)
+  if (day && /ticket|boleto|combi|parlay|express|apuesta|bet|tip|pick|fire|best 6|safe|goals|favourites|big payout/.test(q)) return aDay(day, /fire|fuego/.test(q) ? 'f9' : /best ?6/.test(q) ? 'b6' : /safe/.test(q) ? 'safe3' : /goal/.test(q) ? 'gol' : /favourite/.test(q) ? 'fav' : /big payout/.test(q) ? 'big' : null)
+  if (/what (should|to|can) i bet|what do i bet|que (apuesto|apostar|juego)|hot (match|game|bet)|best bets? (now|today)|recommend|recomiend|tips? (today|now|hoy)|dame (algo|una apuesta)|que me recomiendas|^bet now|^tips?$/.test(q)) return aNow()
+  if (/challenge|reto|desafio|50000|500000/.test(q)) return aChallenge()
+  if (/history|historial|how did (you|your|the) (tips|tickets|suggestions)|your record|tu record|resultados de tus/.test(q)) return aHistory()
   if (/fire|fuego|\bf9\b/.test(q)) return aCombo('f9')
   if (/best ?6|mejor(es)? ?6|\bsix\b|\bseis\b|\bb6\b/.test(q)) return aCombo('b6')
-  if (/value|valor|pay more|pagan mas/.test(q)) return aValue()
+  if (/value|valor|pay more|pagan mas|safest bets|agree|de acuerdo/.test(q)) return aValue()
   if (/ranking|top \d+ teams|top teams|best teams|mejores (equipos|selecciones)|world rank/.test(q)) return aRank()
   if (/my stats|what wins|wins for me|mis estadisticas|que me funciona|my record|mi record/.test(q)) { const L = M.myBetStats(); return L.length ? { node: <div className="abox">{L.map(g => <div key={g.k} className="arow"><span>{g.k}</span><b>{g.w}/{g.n}</b><span className="sub">{Math.round(g.w / g.n * 100)}% won</span></div>)}</div> } : { text: 'No finished bets of yours yet. When your games end I group your bets by type so you see what works for you.' } }
   if (/accura|precis|how good|how often.*right|trust|confia/.test(q)) return aAcc()
@@ -217,6 +286,9 @@ function answer(q0) {
   if (/build|make|create|arma|crea|give me a ticket|dame un|combinada|parlay|safe ticket|high odds|big payout/.test(q)) return aBuild(q)
   const T = findTeams(q0); const eid = findMatch(q0, T)
   if (/live bet|en vivo|apuesta en vivo|bets now|live now/.test(q)) return aLiveBets(eid && M.S(eid).state === 'in' ? eid : null)
+  if (/^why\??$|^por ?que\??$/.test(q)) { const e = E.SEL || eid; if (e) { const r = aWhy(e); if (r) return r } }
+  if (eid && /why|por ?que|explain|explica|how did you|como lo|analy|anali|research|investig/.test(q)) { const r = aWhy(eid); if (r) return { ...r, node: <>{r.node}{T.length ? aTeam(T.slice(0, 2), null)?.node : null}</> } }
+  if (T.length && /research|investig|analy|anali|tell me about|hablame de|info/.test(q)) { const r = aTeam(T, eid && M.S(eid).state !== 'post' ? eid : null); if (r) return r }
   if (eid && /chance|odds|quien gana|who wins|probab|predic|bet|apuesta|cuota/.test(q)) return aMatch(eid)
   if (T.length >= 2 || (T.length && /h2h|head to head|cara a cara|historial/.test(q))) { if (T.length >= 2) { const r = aH2H(T[0], T[1], eid); if (r) return r } }
   if (T.length && /scorer|goleador|who scores|quien marca/.test(q)) return aScorers(T[0])
@@ -230,15 +302,24 @@ function answer(q0) {
 }
 
 export function Assistant() {
-  const [open, setOpen] = useState(false); const [msgs, setMsgs] = useState(() => [{ who: 'bot', ...aHelp(), text: 'Hi! Ask me about a team, a game or your tickets – e.g. “Spain”, “Spain v France”, “Fire 9” or “how strong is my ticket?”.' }]); const [inp, setInp] = useState('')
+  const [open, setOpen] = useState(false); const [msgs, setMsgs] = useState(() => [{ who: 'bot', ...aHelp(), text: 'Hi! Ask me anything – “what should I bet now?”, “ticket for tomorrow”, “why Spain?”, “Real Madrid”, or “how strong is my ticket?”.' }]); const [inp, setInp] = useState('')
   const box = useRef(null)
   useEffect(() => { const f = () => setOpen(false); window.addEventListener('mb:builder', f); return () => window.removeEventListener('mb:builder', f) }, [])
   useEffect(() => { if (box.current) box.current.scrollTop = box.current.scrollHeight }, [msgs, open])
-  const ask = q => { if (!q.trim()) return; let a; try { a = answer(q) } catch (e) { console.warn(e); a = { text: 'The numbers are still loading – try again in a few seconds.' } } setMsgs(m => [...m, { who: 'me', text: q }, { who: 'bot', ...a }]); setInp('') }
+  const ask = q => {
+    if (!q.trim()) return; let a; try { a = answer(q) } catch (e) { console.warn(e); a = { text: 'The numbers are still loading – try again in a few seconds.' } }
+    setInp('')
+    if (a && typeof a.then === 'function') {
+      const id = Date.now(); setMsgs(m => [...m, { who: 'me', text: q }, { who: 'bot', id, text: 'Looking at the games…' }])
+      a.then(r => setMsgs(m => m.map(x => x.id === id ? { who: 'bot', ...r } : x))).catch(() => setMsgs(m => m.map(x => x.id === id ? { who: 'bot', text: 'Couldn’t load those games – try again in a moment.' } : x)))
+      return
+    }
+    setMsgs(m => [...m, { who: 'me', text: q }, { who: 'bot', ...a }])
+  }
   return <>
     <button className={'abtn' + (open ? ' on' : '')} onClick={() => setOpen(!open)} aria-label="Assistant">{open ? '✕' : '💬'}</button>
     {open && <div className="apanel">
-      <div className="ahd"><b>Assistant</b><span className="sub">our own numbers · {DBINFO.nt} countries · 5 big leagues</span></div>
+      <div className="ahd"><b>Assistant</b><span className="sub">our own numbers · {DBINFO.nt} national teams · 5 big leagues</span></div>
       <div className="amsgs" ref={box}>{msgs.map((m, i) => <div key={i} className={'amsg ' + m.who}>
         {m.text && <div>{m.text}</div>}{m.node}
         {m.open && <button className="linkb" onClick={() => { M.selectMatch(m.open); window.dispatchEvent(new CustomEvent('mb:view', { detail: 'stadium' })); setOpen(false) }}>Open this game ›</button>}

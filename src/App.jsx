@@ -17,7 +17,7 @@ function LayoutMenu() {
       <div className="lt2">Match list</div><div className="seg">{[['all', 'All matches'], ['live', 'Live only']].map(([v, l]) => <button key={v} className={P.strip === v ? 'on' : ''} onClick={() => M.setPref('strip', v)}>{l}</button>)}</div>
       <div className="lt2">Where you bet</div><input className="okey" type="text" placeholder="1win" defaultValue={M.bookName()} onBlur={e => M.setBook(e.target.value)} /><div className="sub" style={{ fontSize: 11, margin: '4px 0 8px' }}>Only a name for the labels. The app never connects to it.</div>
       <div className="lt2">Extra live odds (optional, advanced)</div><input className="okey" type="password" placeholder="The Odds API key – leave empty" defaultValue={M.hasOddsKey() ? '••••••••' : ''} onBlur={e => { if (e.target.value !== '••••••••') M.setOddsKey(e.target.value) }} /><div className="sub" style={{ fontSize: 11, margin: '4px 0 8px' }}>{M.hasOddsKey() ? 'Saved on this device only.' : 'Not needed. The app works without it.'}</div>
-      <div className="sub" style={{ fontSize: 11, margin: '0 0 8px' }}>Version 3 · 16 Nov 2026</div>
+      <div className="sub" style={{ fontSize: 11, margin: '0 0 8px' }}>Version 4 · 17 Nov 2026</div>
       <div className="lt2">Show these parts</div>{items.map(([k, l]) => <label key={k} className="chk"><input type="checkbox" checked={P[k] !== false} onChange={e => M.setPref(k, e.target.checked)} /> {l}</label>)}</div>}</div>
 }
 
