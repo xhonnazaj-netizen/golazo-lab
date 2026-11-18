@@ -15,5 +15,14 @@ const SUG_SEED = [
   { id: '20261117|long', date: '20261117', cid: 'long', title: '🎯 Long shot 50', fair: 56, res: 'LOST', legs: [
     L('401861194', 'Denmark win', 0.5, 0), L('401861190', 'Ukraine win', 0.53, 1), L('401861193', 'Austria win', 0.53, 0),
     L('401861195', 'Sweden win', 0.4, 0), L('401861191', 'Draw', 0.32, 1)] },
+  { id: '20261120|week', date: '20261120', cid: 'week', title: '⭐ Week\'s strongest 7', fair: 2.8, legs: [
+    { eid: '401884736', lg: 'ger.1', n: 'Bayern Munich win', p: 0.89 },
+    { eid: '401888245', lg: 'tur.1', n: 'Galatasaray win', p: 0.89 },
+    { eid: '401875543', lg: 'ned.1', n: 'Feyenoord Rotterdam win', p: 0.82 },
+    { eid: '401878338', lg: 'sco.1', n: 'Celtic win', p: 0.8 },
+    { eid: '401888249', lg: 'tur.1', n: 'Trabzonspor win', p: 0.92 },
+    { eid: '401875545', lg: 'ned.1', n: 'FC Twente win', p: 0.88 },
+    { eid: '401878936', lg: 'bel.1', n: 'Union St.-Gilloise win', p: 0.85 },
+] },
 ];
 export default SUG_SEED;
