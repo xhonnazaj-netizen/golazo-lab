@@ -1828,7 +1828,8 @@ function sugStatus(x) {
 }
 const HISTLOAD = {};
 async function loadHistory() {
-  const dates = [...new Set(SUG.filter((x) => !x.res).map((x) => x.date))];
+  // a ticket can span several days (e.g. Friday to Sunday): load its first day and the next two
+  const dates = [...new Set(SUG.filter((x) => !x.res).flatMap((x) => [x.date, nextYmd(x.date), nextYmd(nextYmd(x.date))]))];
   for (const d of dates) {
     if (HISTLOAD[d] || DAYLOAD[d]) continue;
     HISTLOAD[d] = 1;
