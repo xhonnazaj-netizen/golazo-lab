@@ -4,8 +4,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  workflow_run:            # redeploy after the nightly ratings commit
-    workflows: ["Nightly model training"]
+  workflow_run:            # redeploy after the nightly ratings / week data commits
+    workflows: ["Nightly model training", "Collect week data"]
     types: [completed]
 permissions:
   contents: read
