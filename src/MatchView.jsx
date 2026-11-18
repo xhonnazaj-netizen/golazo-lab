@@ -138,7 +138,7 @@ function Playing(){const m=M.byE[E.SEL],s=M.S(E.SEL);if(s.state!=='in'||!M.PREF.
     <div className="pl3"><span/><b>{m.hA}</b><b>{m.aA}</b><span>Big chances (last 15 min)</span><span>{s.shots.filter(z=>z.side===0&&z.xg>=.15).length} ({s.shots.filter(z=>z.side===0&&z.xg>=.15&&z.mi>s.min-15).length})</span><span>{s.shots.filter(z=>z.side===1&&z.xg>=.15).length} ({s.shots.filter(z=>z.side===1&&z.xg>=.15&&z.mi>s.min-15).length})</span><span>Shots on goal</span><span>{sot[0]}</span><span>{sot[1]}</span><span>Yellow cards</span><span>{s.yh||0}</span><span>{s.ya||0}</span></div>
     <div className="sub" style={{marginTop:6,lineHeight:1.5}}><V x={s.xh} ex={exH} name={m.h}/><V x={s.xa} ex={exA} name={m.a}/></div></div>}
 /* why this prediction – what we looked at and how, in plain words */
-const WICON={strength:'💪',form:'📈',home:'🏟',h2h:'🤝',goals:'⚽',cards:'🟨',book:'📊',table:'🏆',players:'👟',signings:'🔁'}
+const WICON={strength:'💪',form:'📈',home:'🏟',h2h:'🤝',goals:'⚽',cards:'🟨',book:'📊',table:'🏆',players:'👟',signings:'🔁',trust:'🎯'}
 export function WhyCard({eid}){const [,f]=useState(0);const m=M.byE[eid];useEffect(()=>{if(m)M.loadForm(m).then(()=>f(x=>x+1)).catch(()=>{})},[eid]);const w=M.whyOf(eid);if(!w)return null
   return <div className="lvcard why" id="why"><h3>Why this prediction?</h3><div className="wv">{w.verdict} <span className="sub">W1 {pct(w.H)} · X {pct(w.D)} · W2 {pct(w.A)}</span></div>
     {w.pts.map((x,i)=><div key={i} className="wp"><span>{WICON[x.k]||'•'}</span><span>{x.t}</span></div>)}

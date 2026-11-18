@@ -9,6 +9,15 @@ Everything runs in your browser. No account, no server, no tracking.
 - **Online:** open the GitHub Pages link of this repository (Settings → Pages). On a phone, use *Add to Home Screen* to install it like an app.
 - **On a PC:** download `index.html` from the latest build and double-click it.
 
+
+## Leagues and data (Version 5)
+
+20 competitions: the big 5, Champions League, Europa League, Nations League, plus Chile, Brazil, Argentina, Mexico, MLS, Colombia, Championship, Eredivisie, Portugal, Belgium, Turkey and Scotland.
+
+- **Ratings for the 12 extra leagues** are trained on three seasons of results (`model/train_leagues.py`). Settings are chosen on the year before and scored only on the last 12 months, against the league average: Portugal +12.8%, Netherlands +7.2%, Scotland +7.0%, Turkey +6.8%, Belgium +5.4%, Brazil +3.4%, Chile +3.1%, Colombia +2.5%, Argentina +2.3%, MLS +2.2%, Championship +2.0%, Mexico +1.8% (big 5: +7.1%).
+- Leagues under +3% are marked ★ "hard to predict" and are kept out of the ready tickets. Mexico, MLS and Colombia favourites won clearly less often than predicted.
+- **Nightly data** (`model/collect.mjs`, GitHub Actions): this week's fixtures, league tables, top scorers and assists, every squad with season stats (games, goals, shots, cards), each team's last 6 results, and summer 2026 transfers. Sources: ESPN public site API; transfers from Wikipedia transfer lists (CC BY-SA 4.0).
+
 ## What's inside
 
 | Screen | What it does |

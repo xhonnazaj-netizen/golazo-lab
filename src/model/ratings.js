@@ -140,8 +140,12 @@ function clubLam(m) {
   const [rh, fh] = T[kh], [ra, fa] = T[ka];
   const x = (f, i, j) => (f[i] + kp) / (f[j] + kp);
   const dr = rh - ra,
-    b = (CLUBS.bLg && CLUBS.bLg[m.lg]) || CLUBS.b;
-  return [clamp(mu[0] * Math.exp(b * dr) * x(fh, 0, 1) * x(fa, 2, 3), 0.2, 4.2), clamp(mu[1] * Math.exp(-b * dr) * x(fa, 0, 1) * x(fh, 2, 3), 0.15, 3.8)];
+    b = (CLUBS.bLg && CLUBS.bLg[m.lg]) || CLUBS.b,
+    w = (CLUBS.wLg && CLUBS.wLg[m.lg]) || 1;
+  // w < 1: pull part of the way back to the league average (calibration chosen on past seasons)
+  const lh = mu[0] * Math.exp(b * dr) * x(fh, 0, 1) * x(fa, 2, 3),
+    la = mu[1] * Math.exp(-b * dr) * x(fa, 0, 1) * x(fh, 2, 3);
+  return [clamp(Math.pow(mu[0], 1 - w) * Math.pow(lh, w), 0.2, 4.2), clamp(Math.pow(mu[1], 1 - w) * Math.pow(la, w), 0.15, 3.8)];
 }
 // yellow cards expected per team, from each club's card history (league average for national teams)
 function cardsOf(m) {
@@ -317,6 +321,13 @@ function clubRating(lg, name) {
 }
 const clubUpto = (lg) => (CLUBS && CLUBS.uptoLg && CLUBS.uptoLg[lg]) || (CLUBS && CLUBS.upto);
 const clubTest = (lg) => (CLUBS && CLUBS.test && CLUBS.test[lg]) || null;
+// how well we predict a league (out-of-sample gain over the league average): 3 good, 2 okay, 1 hard
+function leagueTrust(lg) {
+  const t = clubTest(lg);
+  if (!t) return null;
+  const g = 1 - t[0] / t[1];
+  return g >= 0.05 ? 3 : g >= 0.03 ? 2 : 1;
+}
 const ratingsInfo = () => ({ nat: ELO.upto, club: CLUBS && CLUBS.upto });
 
-export { clubUpto, clubTest, clubRating, applyClubSeason, applyNationalGames, ratingsInfo, eloOf, eloKey, formX, eloLam, dcLam, clubKey, clubLam, cardsOf, eloK, updateElo, loadRatings };
+export { leagueTrust, clubUpto, clubTest, clubRating, applyClubSeason, applyNationalGames, ratingsInfo, eloOf, eloKey, formX, eloLam, dcLam, clubKey, clubLam, cardsOf, eloK, updateElo, loadRatings };

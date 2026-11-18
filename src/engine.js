@@ -9,7 +9,7 @@ import { teamInfo as tdbInfo, h2h as tdbH2H, rankOf as tdbRank } from './model/t
 import { LS } from './util/storage.js';
 import { BASE, W, J, lim } from './data/provider.js';
 import { rnd, pois, gam, bs, pp, gridOf, pdev, priorFrom, clamp } from './model/math.js';
-import { eloOf, eloKey, formX, eloLam, clubLam, clubKey, clubRating, clubUpto, clubTest, cardsOf, updateElo, loadRatings, applyClubSeason, applyNationalGames, ratingsInfo } from './model/ratings.js';
+import { eloOf, eloKey, formX, eloLam, clubLam, clubKey, clubRating, clubUpto, clubTest, leagueTrust, cardsOf, updateElo, loadRatings, applyClubSeason, applyNationalGames, ratingsInfo } from './model/ratings.js';
 import { markets, marketsShown, shown, predictability, nice } from './model/markets.js';
 /* Golazo Lab engine: data, models, live polling, tickets. UI lives in React components. */
 const UI = { status: "Connecting…", ok: true, toasts: [], goal: null };
@@ -1522,10 +1522,12 @@ function combos(date) {
   const C = [];
   // games still to play today; if today has too few, tomorrow's games are added (so Fire 9 always has 9)
   // games for a ticket: today's games still to start; if too few, games being played now, then tomorrow's games
+  // leagues we predict poorly (very even leagues: tested) never go into ready tickets
+  const okLg = (x) => leagueTrust(x.lg) !== 1;
   const pool = (need) => {
-    let g = dayGames(date).filter((x) => S(x.eid).state === "pre");
-    if (g.length < need) g = g.concat(dayGames(date).filter((x) => S(x.eid).state === "in" && (S(x.eid).min || 0) < 60));
-    if (g.length < need) g = g.concat(dayGames(nextYmd(date)).filter((x) => S(x.eid).state === "pre"));
+    let g = dayGames(date).filter((x) => S(x.eid).state === "pre" && okLg(x));
+    if (g.length < need) g = g.concat(dayGames(date).filter((x) => S(x.eid).state === "in" && (S(x.eid).min || 0) < 60 && okLg(x)));
+    if (g.length < need) g = g.concat(dayGames(nextYmd(date)).filter((x) => S(x.eid).state === "pre" && okLg(x)));
     return g;
   };
   const cand = (names, lo, hi, need = 0) => {
@@ -1989,8 +1991,10 @@ function whyOf(eid) {
   const st = S(eid);
   const now = st.state === "in" ? `${st.h > st.a ? m.h + " lead" : st.h < st.a ? m.a + " lead" : "Level"} ${st.h}-${st.a} at ${st.clock || st.min + "'"} – ` : "";
   const verdict = now + (gap < 0.1 ? (now ? "a close game, no clear favourite." : "A close game – no clear favourite.") : `${fav.name} are ${gap > 0.35 ? "clear" : "slight"} favourites${now ? " now" : ""}.`);
+  const tr = club ? leagueTrust(m.lg) : null;
+  if (tr) pts.push({ k: "trust", t: tr === 3 ? "We predict this league well (tested on last season's games) ★★★" : tr === 2 ? "We predict this league okay ★★ – results can surprise." : "This league is very even and hard to predict ★ – it is kept out of our ready tickets. Take care." });
   return {
-    H, D, A, verdict, pts, nat, club,
+    H, D, A, verdict, pts, nat, club, trust: tr,
     how: [
       "We rate every team from all its past results – wins against strong teams and big wins count more.",
       "Recent games count more than old ones, so a team in form moves up fast.",
@@ -2862,6 +2866,7 @@ export {
   challengeState,
   CH_MODES,
   whyOf,
+  leagueTrust,
   myTilt,
   loadSeason,
   betKind,

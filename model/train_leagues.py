@@ -19,7 +19,7 @@ def brier(lh, la, hs, as_):
     o = [hs > as_, hs == as_, hs < as_]
     return (H - o[0]) ** 2 + (D - o[1]) ** 2 + (A - o[2]) ** 2 + (O - (hs + as_ > 2)) ** 2
 
-def run(lg, games, b, K, DEC=0.9, KP=25, reg=0.2, test_from=None, test_to='999999'):
+def run(lg, games, b, K, DEC=0.9, KP=25, reg=0.2, test_from=None, test_to='999999', w=1.0, calib=None):
     Rt = {}; F = collections.defaultdict(lambda: [0., 0., 0., 0.]); Y = {}; mu = [1.4 * 50, 1.15 * 50, 50.]; yl = [2.2 * 50, 50.]
     seas = {}; S = Sb = 0.0; n = 0
     for g in games:
@@ -36,8 +36,15 @@ def run(lg, games, b, K, DEC=0.9, KP=25, reg=0.2, test_from=None, test_to='99999
         x = lambda v, i, j: (v[i] + KP) / (v[j] + KP)
         fh, fa = F[h], F[a]
         lh = lh0 * x(fh, 0, 1) * x(fa, 2, 3); la = la0 * x(fa, 0, 1) * x(fh, 2, 3)
+        # calibration: pull the expected goals part of the way back to the league average (w=1: no pull)
+        lh = mh ** (1 - w) * lh ** w; la = ma ** (1 - w) * la ** w
         if test_from and test_from <= d < test_to:
             S += brier(lh, la, hs, as_); Sb += brier(mh, ma, hs, as_); n += 1
+            if calib is not None:
+                a_, b_ = pmf(lh), pmf(la)
+                pH = sum(a_[i] * b_[j] for i in range(11) for j in range(11) if i > j); pA = sum(a_[i] * b_[j] for i in range(11) for j in range(11) if i < j)
+                for p_, won in ((pH, hs > as_), (pA, as_ > hs)):
+                    if p_ >= 0.6: calib.append((p_, won))
         W = 1 if hs > as_ else .5 if hs == as_ else 0; We = 1 / (10 ** (-(dr + 60) / 400) + 1)
         gd = abs(hs - as_); G = 1 if gd <= 1 else 1.5 if gd == 2 else (11 + gd) / 8
         dl = K * G * (W - We); Rt[h] += dl; Rt[a] -= dl
@@ -66,7 +73,14 @@ for lg in NEW:
             r = run(lg, G, b, K, test_from=tune_from, test_to=tf)
             if r['score'][0] is not None and (best is None or r['score'][0] < best[0]): best = (r['score'][0], b, K)
     _, b, K = best
-    r = run(lg, G, b, K, test_from=tf)
+    # calibration strength, also chosen on the year before the test year
+    wb = min((run(lg, G, b, K, test_from=tune_from, test_to=tf, w=w)['score'][0], w) for w in (1.0, 0.95, 0.9, 0.85, 0.8))[1]
+    CAL = []
+    r = run(lg, G, b, K, test_from=tf, w=wb, calib=CAL)
+    r0 = run(lg, G, b, K, test_from=tf)
+    out.setdefault('calib', {})[lg] = [len(CAL), round(sum(p for p, _ in CAL) / max(1, len(CAL)), 3), round(sum(1 for _, x in CAL if x) / max(1, len(CAL)), 3)]
+    out.setdefault('wLg', {})[lg] = wb
+    print(f"         calibration w={wb}: test {r0['score'][0]:.4f} -> {r['score'][0]:.4f}; favourites 60%+: we said {100 * out['calib'][lg][1]:.1f}%, won {100 * out['calib'][lg][2]:.1f}% ({len(CAL)})")
     s = r['score']
     print(f"{lg:8s} {len(G):6d} {s[2]:5d} {s[0]:7.4f} {s[1]:7.4f} {100 * (s[1] - s[0]) / s[1]:5.1f}%  {b:.4f} {K}")
     cur = max(r['seas'].values())
