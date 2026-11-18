@@ -318,13 +318,19 @@ function aTransfers(t) {
     {O.length > 0 && <div className="abox"><b>Out ({O.length})</b>{O.slice(0, 12).map((x, i) => <div key={i} className="arow"><span><b>{x[1]}</b><span className="sub"> to {x[2]}</span></span><span className="sub">{x[3]}</span></div>)}</div>}
     <div className="sub" style={{ fontSize: 10 }}>Source: Wikipedia transfer lists (CC BY-SA)</div></>, chips: [`${w.n}`, `${w.n} squad`] }
 }
-function aWeekGames(lg, day) {
-  const F = W.fixturesOf(lg, day); const wk = W.week()
+async function aWeekGames(lg, day, weekend) {
+  const wk = W.week()
+  let F = W.fixturesOf(lg, day).slice().sort((a, b) => (a[2] < b[2] ? -1 : 1))
+  if (weekend) F = F.filter(f => [0, 6].includes(new Date(f[2]).getDay()))
+  // load those days' games so our % can be shown
+  const days = [...new Set(F.map(f => { const d = new Date(f[2]); return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0') }))]
+  await Promise.all(days.map(d => M.loadDayData(d)))
+  await new Promise(r => setTimeout(r, 300))
   if (!F.length) return { text: `No games ${lg ? 'in ' + W.leagueName(lg) + ' ' : ''}${day ? 'that day' : 'this week'}.` }
   const byDay = {}; F.forEach(f => { const d = new Date(f[2]).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short' }); (byDay[d] = byDay[d] || []).push(f) })
-  return { node: <><div className="ah">{lg ? W.leagueName(lg) : 'All leagues'} · {day ? '' : `${wk.from} to ${wk.to} · `}{F.length} games</div>
+  return { node: <><div className="ah">{lg ? W.leagueName(lg) : 'All leagues'} · {day ? '' : weekend ? 'this weekend · ' : `${wk.from} to ${wk.to} · `}{F.length} games</div>
     {Object.entries(byDay).map(([d, L]) => <div key={d} className="abox"><b>{d}</b>{L.slice(0, 30).map(f => { const e = eidOf(f[4], f[6]); const R = e ? M.simOf(e) : null; const H = R ? M.frac(R, (R, n) => R.GH[n] > R.GA[n]) : null, A = R ? M.frac(R, (R, n) => R.GH[n] < R.GA[n]) : null
-      return <div key={f[0]} className="arow"><span><b>{f[4]} v {f[6]}</b><span className="sub"> {new Date(f[2]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{lg ? '' : ' · ' + W.leagueName(f[1])}</span></span>{R ? <span className="sub">W1 {M.pct(H)} · W2 {M.pct(A)}</span> : <span className="sub">open the day for %</span>}</div> })}{L.length > 30 && <div className="sub">+{L.length - 30} more</div>}</div>)}</>,
+      return <div key={f[0]} className="arow"><span><b>{f[4]} v {f[6]}</b><span className="sub"> {new Date(f[2]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{lg ? '' : ' · ' + W.leagueName(f[1])}</span></span>{R ? <span className="sub">W1 {M.pct(H)} · W2 {M.pct(A)}</span> : <span className="sub">–</span>}</div> })}{L.length > 30 && <div className="sub">+{L.length - 30} more</div>}</div>)}</>,
     chips: ['What should I bet now?', 'Ticket for Saturday', 'Ticket for Sunday'] }
 }
 
@@ -353,7 +359,7 @@ function answer(q0) {
   if (/top scor|scorers|goleador|pichichi|artiller|maximo/.test(q) && lgq && !WT.length) return W.week() ? aLeagueScorers(lgq) : noWeek
   if (/transfer|fichaj|signing|signed|refuerz|altas|bajas|who (did|has) .* (sign|buy)/.test(q) && WT.length) return aTransfers(WT[0]) || noWeek
   if (/squad|plantel|plantilla|jugadores de|players of|roster/.test(q) && WT.length) return aSquad(WT[0])
-  if (/this week|esta semana|weekend|fin de semana|games|partidos|fixtures|calendario|juegan/.test(q) && !/ticket|boleto|bet|apuesta/.test(q) && (lgq || day || /week|semana|weekend/.test(q))) return W.week() ? aWeekGames(lgq, day ? day.slice(0, 4) + '-' + day.slice(4, 6) + '-' + day.slice(6) : null) : noWeek
+  if (/this week|esta semana|weekend|fin de semana|games|partidos|fixtures|calendario|juegan/.test(q) && !/ticket|boleto|bet|apuesta/.test(q) && (lgq || day || /week|semana|weekend/.test(q))) return W.week() ? aWeekGames(lgq, day ? day.slice(0, 4) + '-' + day.slice(4, 6) + '-' + day.slice(6) : null, /weekend|fin de semana/.test(q) && !day) : noWeek
   const T = findTeams(q0); const eid = findMatch(q0, T)
   if (/live bet|en vivo|apuesta en vivo|bets now|live now/.test(q)) return aLiveBets(eid && M.S(eid).state === 'in' ? eid : null)
   if (/^why\??$|^por ?que\??$/.test(q)) { const e = E.SEL || eid; if (e) { const r = aWhy(e); if (r) return r } }

@@ -59,7 +59,7 @@ export function TodayView({ openBuilder }) {
   return <section className="today">
     <div className="td-top">
       <div><h2>{d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}</h2><div className="sub">Daily numbers for every game · tap a bet to add it to your ticket</div></div>
-      <div className="daychips">{[[-1, 'Yesterday'], [0, 'Today'], [1, 'Tomorrow'], [2, d2label(2)]].map(([k, l]) => <button key={k} className={day === dayOff(k) ? 'on' : ''} onClick={() => setDay(dayOff(k))}>{l}</button>)}</div>
+      <div className="daychips">{[[-1, 'Yesterday'], [0, 'Today'], [1, 'Tomorrow'], ...Array.from({ length: Math.max(1, (7 - new Date().getDay()) % 7 || 1) - 1 }, (_, i) => [i + 2, d2label(i + 2)])].map(([k, l]) => <button key={k} className={day === dayOff(k) ? 'on' : ''} onClick={() => setDay(dayOff(k))}>{l}</button>)}</div>
     </div>
     <div className="tsum">
       <div><span className="sub">Games</span><b>{games.length}</b></div><div><span className="sub">Live now</span><b className={live ? 'cy' : ''}>{live}</b></div>

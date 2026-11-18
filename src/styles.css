@@ -467,3 +467,4 @@ main.app{display:grid;grid-template-columns:270px minmax(0,1fr);gap:14px;padding
 .why{line-height:1.5}.why .wv{font-size:15px;font-weight:700;margin:4px 0 8px}.why .wp{display:grid;grid-template-columns:22px 1fr;gap:6px;padding:4px 0;font-size:13px;border-top:1px solid rgba(255,255,255,.04)}
 .why .how{margin-top:10px;padding:10px;border-radius:10px;background:rgba(61,245,255,.05);font-size:12px}.why .how ol{margin:6px 0 0 18px;padding:0}.why .how li{margin:2px 0}
 .whybtn{font-size:12px;padding:3px 10px;margin-left:8px}
+@media(max-width:760px){.daychips{flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none}.daychips button{white-space:nowrap}}
