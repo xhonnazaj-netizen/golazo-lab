@@ -225,11 +225,71 @@ export function parseTables(w) {
   }
   return out;
 }
+// club-by-club pages: ===Club=== then In: / Out: lists of {{fs player|...|name=...|other=from [[Club]]}}
+function templatesAt(w, re) {
+  const out = [];
+  let m;
+  const rx = new RegExp(re.source, 'gi');
+  while ((m = rx.exec(w))) {
+    const i = m.index;
+    let depth = 0, j = i;
+    for (; j < w.length - 1; j++) {
+      const two = w.slice(j, j + 2);
+      if (two === '{{') { depth++; j++; } else if (two === '}}') { depth--; j++; if (depth === 0) break; }
+    }
+    const body = w.slice(i + 2, j - 1);
+    const params = {};
+    let d = 0, cur = '';
+    const parts = [];
+    for (let k = 0; k < body.length; k++) {
+      const two = body.slice(k, k + 2);
+      if (two === '{{' || two === '[[') { d++; cur += two; k++; continue; }
+      if (two === '}}' || two === ']]') { d--; cur += two; k++; continue; }
+      if (body[k] === '|' && d === 0) { parts.push(cur); cur = ''; continue; }
+      cur += body[k];
+    }
+    parts.push(cur);
+    parts.slice(1).forEach((p) => { const e = p.indexOf('='); if (e > 0) params[p.slice(0, e).trim().toLowerCase()] = p.slice(e + 1); });
+    out.push({ at: i, end: j + 1, params });
+    rx.lastIndex = j + 1;
+  }
+  return out;
+}
+const Q3 = "'''";
+export function parseClubLists(w) {
+  const ev = [];
+  let m;
+  const hx = /^(={2,5})\s*(.+?)\s*\1\s*$/gm;
+  while ((m = hx.exec(w))) ev.push({ at: m.index, k: 'h', v: cleanWiki(m[2]) });
+  const dx = new RegExp(Q3 + "\\s*(in|out|arrivals|departures|incoming|outgoing|transfers in|transfers out|players in|players out|altas|bajas)\\s*:?\\s*" + Q3, 'gi');
+  while ((m = dx.exec(w))) ev.push({ at: m.index, k: 'd', v: /^(in|arrivals|incoming|transfers in|players in|altas)$/i.test(m[1].trim()) ? 'in' : 'out' });
+  templatesAt(w, /\{\{\s*fs player\b/).forEach((t) => ev.push({ at: t.at, k: 't', p: t.params }));
+  ev.sort((a, b) => a.at - b.at);
+  let club = '', dir = '';
+  const rows = [];
+  for (const e of ev) {
+    if (e.k === 'h') { club = e.v; dir = ''; continue; }
+    if (e.k === 'd') { dir = e.v; continue; }
+    const name = cleanWiki(e.p.name || '');
+    const other = cleanWiki(e.p.other || '');
+    if (!name || !club) continue;
+    let d = dir;
+    if (!d) d = /^(on loan )?from\b|^loan from/i.test(other) ? 'in' : /^(on loan )?to\b|^loan to/i.test(other) ? 'out' : '';
+    if (!d) continue;
+    const om = other.match(/\b(?:from|to|at)\s+(.+?)(?:,|;|\(|\bpreviously\b|$)/i);
+    const oc = om ? om[1].trim() : /free agent|released|unattached|retired|end of contract/i.test(other) ? 'Free agent' : other.slice(0, 40);
+    const fee = /loan/i.test(other) ? 'Loan' : /free|released|unattached|end of contract/i.test(other) ? 'Free' : '';
+    rows.push(d === 'in' ? ['', name, oc, club, fee] : ['', name, club, oc, fee]);
+  }
+  return rows;
+}
 export async function wikiTransfers(country) {
   const page = `List of ${country} football transfers summer 2026`;
   const q = new URLSearchParams({ action: 'parse', format: 'json', origin: '*', page, prop: 'wikitext', formatversion: '2', redirects: '1' });
   const j = await getJSON(WIKI + '?' + q);
-  return j && j.parse && j.parse.wikitext ? parseTables(j.parse.wikitext) : [];
+  if (!(j && j.parse && j.parse.wikitext)) return [];
+  const w = j.parse.wikitext;
+  return parseTables(w).concat(parseClubLists(w));
 }
 
 // ---- club-name matching (Wikipedia names -> ESPN team ids) ----
