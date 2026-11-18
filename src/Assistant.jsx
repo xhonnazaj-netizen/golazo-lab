@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import * as M from './engine.js'
 import { findTeams, findScorer, teamInfo, h2h, ranking, glossary, DBINFO } from './model/teamdb.js'
 import { Strength } from './Bits.jsx'
+import * as W from './model/week.js'
 const { E } = M
 
 /* Built-in assistant: understands set kinds of questions (English + Spanish)
@@ -59,7 +60,7 @@ function bestPicks(filter, lo = .6, hi = .93) {
 function onePerMatch(L, k) { const seen = new Set(), r = []; for (const x of L) { if (seen.has(x.eid)) continue; seen.add(x.eid); r.push(x); if (r.length >= k) break } return r }
 
 /* ---------- answers ---------- */
-const CHIPS = ['What should I bet now?', 'Ticket for tomorrow', 'How strong is my ticket?', 'Safest bets', 'Your suggestion history', 'AI challenge', 'Fire 9', 'Spain form', 'What is X2?']
+const CHIPS = ['What should I bet now?', 'Games this weekend', 'Ticket for Saturday', 'Premier League table', 'Top scorers LaLiga', 'Arsenal transfers', 'Colo Colo', 'How strong is my ticket?', 'Your suggestion history', 'What is X2?']
 function aHelp() { return { text: 'I answer from this app’s own numbers and a database of ' + DBINFO.games.toLocaleString('en-US') + ' national-team games + 5 big leagues. Try:', chips: CHIPS } }
 
 function aCash() {
@@ -265,6 +266,68 @@ function whenDay(q) {
   return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0')
 }
 
+/* ---------- every league: tables, scorers, players, squads, transfers, this week's games (nightly data) ---------- */
+const ordn = n => n + (n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th')
+const FR = g => (g[2] > g[3] ? 'W' : g[2] === g[3] ? 'D' : 'L')
+const wkWhen = iso => new Date(iso).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })
+const noWeek = { text: 'The team and player data is still loading – try again in a few seconds.' }
+function eidOf(h, a) { return Object.keys(M.byE).find(e => { const m = M.byE[e]; return W.wnorm(m.h) === W.wnorm(h) && W.wnorm(m.a) === W.wnorm(a) }) }
+function aClub(t) {
+  const w = W.teamWeek(t.n || t); if (!w) return null
+  const kp = W.keyPlayers(w, 3), cm = W.cardMen(w, 2), si = W.signings(w, 5), de = W.departures(w, 4)
+  const gp = w.st && w.st.gp ? w.st.gp : 0
+  return { node: <><div className="abox"><b>{w.n}</b> <span className="sub">· {w.league}</span>
+    {w.st && <div>{ordn(w.st.rank)}{w.st.group ? ' in ' + w.st.group : ''} · <b>{w.st.pts} pts</b> from {w.st.gp} games ({w.st.w}W {w.st.d}D {w.st.l}L) · goals {w.st.gf}-{w.st.ga}{gp ? ` (${(w.st.gf / gp).toFixed(1)} scored, ${(w.st.ga / gp).toFixed(1)} let in per game)` : ''}</div>}
+    {w.form && w.form.length > 0 && <div style={{ margin: '4px 0' }}><span className="aform">{w.form.map((g, i) => <span key={i} className={'fr ' + FR(g)} title={`${g[0]} ${g[4] ? 'v' : '@'} ${g[1]} ${g[2]}-${g[3]}`}>{FR(g)}</span>)}</span> <span className="sub">{w.form.slice(0, 3).map(g => `${g[4] ? 'v' : '@'} ${g[1]} ${g[2]}-${g[3]}`).join(' · ')}</span></div>}
+    {kp.length > 0 && <div>⚽ Top scorers: {kp.map(p => `${p[0]} ${p[5]}`).join(', ')}</div>}
+    {cm.length > 0 && <div>🟨 Most booked: {cm.map(p => `${p[0]} ${p[8]}`).join(', ')}</div>}
+    {si.length > 0 && <div>➕ Signed: {si.map(x => `${x[1]} (from ${x[2]}${x[3] ? ', ' + x[3] : ''})`).join('; ')}</div>}
+    {de.length > 0 && <div className="sub">➖ Left: {de.map(x => `${x[1]} (to ${x[2]})`).join('; ')}</div>}
+    {w.fx.map(f => { const e = eidOf(f[4], f[6]); return <div key={f[0]} style={{ marginTop: 4 }}>📅 <b>{f[4]} v {f[6]}</b> <span className="sub">{wkWhen(f[2])}</span>{e && <MatchRow eid={e} />}</div> })}
+  </div><div className="sub" style={{ fontSize: 10 }}>Squads, tables: ESPN · transfers: Wikipedia (CC BY-SA)</div></>,
+    open: (w.fx[0] && eidOf(w.fx[0][4], w.fx[0][6])) || null, chips: [`${w.n} squad`, `${w.n} transfers`, `${w.league} table`] }
+}
+function aTable(lg) {
+  const T = W.tableOf(lg); if (!T.length) return { text: 'I have no table for that league.' }
+  return { node: <><div className="ah">{W.leagueName(lg)} – table</div>{T.map(g => <div key={g.g} className="abox">{T.length > 1 && <b>{g.g}</b>}
+    {g.rows.slice(0, T.length > 1 ? 8 : 20).map(r => <div key={r[1]} className="arow"><span>{r[0]}. <b>{r[2]}</b></span><span className="sub">{r[3]} games · {r[7]}-{r[8]}</span><b>{r[9]}</b></div>)}</div>)}</>,
+    chips: [`Top scorers ${W.leagueName(lg)}`, `${W.leagueName(lg)} games this week`] }
+}
+function aLeagueScorers(lg) {
+  const S = W.scorersOf(lg), A = W.assistsOf(lg); if (!S.length) return { text: 'No scorer list for that league.' }
+  return { node: <><div className="ah">{W.leagueName(lg)} – top scorers</div><div className="abox">{S.slice(0, 10).map((x, i) => <div key={i} className="arow"><span>{i + 1}. <b>{x[0]}</b><span className="sub"> {x[1]}</span></span><b>{x[2]}</b></div>)}</div>
+    {A.length > 0 && <><div className="ah">Assists</div><div className="abox">{A.slice(0, 5).map((x, i) => <div key={i} className="arow"><span><b>{x[0]}</b><span className="sub"> {x[1]}</span></span><b>{x[2]}</b></div>)}</div></>}</>, chips: [`${W.leagueName(lg)} table`] }
+}
+function aPlayer(f) {
+  const p = f.p, P = W.P
+  return { node: <div className="abox"><b>{p[P.name]}</b> <span className="sub">· {f.team}{p[P.pos] ? ' · ' + ({ G: 'goalkeeper', D: 'defender', M: 'midfielder', F: 'forward' }[p[P.pos]] || p[P.pos]) : ''}{p[P.age] ? ' · ' + p[P.age] + ' years' : ''}{p[P.nat] ? ' · ' + p[P.nat] : ''}</span>
+    <div className="atri"><span>Games <b>{p[P.apps]}</b>{p[P.subs] ? <span className="sub"> ({p[P.subs]} as sub)</span> : null}</span><span>Goals <b>{p[P.goals]}</b></span>{p[P.ast] > 0 && <span>Assists <b>{p[P.ast]}</b></span>}<span>Shots <b>{p[P.shots]}</b> <span className="sub">({p[P.sot]} on target)</span></span><span>🟨 <b>{p[P.yc]}</b>{p[P.rc] ? ' 🟥 ' + p[P.rc] : ''}</span></div>
+    {p[P.apps] > 0 && p[P.goals] > 0 && <div className="sub">A goal every {(p[P.apps] / p[P.goals]).toFixed(1)} games this season.</div>}</div>, chips: [`${f.team}`, `Top scorers ${W.leagueName(f.lg)}`] }
+}
+function aSquad(t) {
+  const w = W.teamWeek(t.n || t); if (!w || !w.sq.length) return { text: 'No squad list for that team this week.' }
+  const L = w.sq.filter(p => p[3] > 0).sort((a, b) => b[3] - a[3]).slice(0, 18)
+  return { node: <><div className="ah">{w.n} – squad this season</div><div className="abox">{L.map(p => <div key={p[0]} className="arow"><span><b>{p[0]}</b><span className="sub"> {p[1]}{p[2] ? ' · ' + p[2] : ''}</span></span><span className="sub">{p[3]} games</span><span>⚽ {p[5]} · 🟨 {p[8]}</span></div>)}</div></>, chips: [`${w.n} transfers`, `${w.n}`] }
+}
+function aTransfers(t) {
+  const w = W.teamWeek(t.n || t); if (!w) return null
+  const I = w.tr.in.slice().reverse(), O = w.tr.out.slice().reverse()
+  if (!I.length && !O.length) return { text: `I have no summer transfers for ${w.n} (lists exist for the European leagues and Mexico).` }
+  return { node: <><div className="ah">{w.n} – summer 2026 transfers</div>
+    {I.length > 0 && <div className="abox"><b>In ({I.length})</b>{I.slice(0, 12).map((x, i) => <div key={i} className="arow"><span><b>{x[1]}</b><span className="sub"> from {x[2]}</span></span><span className="sub">{x[3]}</span></div>)}</div>}
+    {O.length > 0 && <div className="abox"><b>Out ({O.length})</b>{O.slice(0, 12).map((x, i) => <div key={i} className="arow"><span><b>{x[1]}</b><span className="sub"> to {x[2]}</span></span><span className="sub">{x[3]}</span></div>)}</div>}
+    <div className="sub" style={{ fontSize: 10 }}>Source: Wikipedia transfer lists (CC BY-SA)</div></>, chips: [`${w.n}`, `${w.n} squad`] }
+}
+function aWeekGames(lg, day) {
+  const F = W.fixturesOf(lg, day); const wk = W.week()
+  if (!F.length) return { text: `No games ${lg ? 'in ' + W.leagueName(lg) + ' ' : ''}${day ? 'that day' : 'this week'}.` }
+  const byDay = {}; F.forEach(f => { const d = new Date(f[2]).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short' }); (byDay[d] = byDay[d] || []).push(f) })
+  return { node: <><div className="ah">{lg ? W.leagueName(lg) : 'All leagues'} · {day ? '' : `${wk.from} to ${wk.to} · `}{F.length} games</div>
+    {Object.entries(byDay).map(([d, L]) => <div key={d} className="abox"><b>{d}</b>{L.slice(0, 30).map(f => { const e = eidOf(f[4], f[6]); const R = e ? M.simOf(e) : null; const H = R ? M.frac(R, (R, n) => R.GH[n] > R.GA[n]) : null, A = R ? M.frac(R, (R, n) => R.GH[n] < R.GA[n]) : null
+      return <div key={f[0]} className="arow"><span><b>{f[4]} v {f[6]}</b><span className="sub"> {new Date(f[2]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{lg ? '' : ' · ' + W.leagueName(f[1])}</span></span>{R ? <span className="sub">W1 {M.pct(H)} · W2 {M.pct(A)}</span> : <span className="sub">open the day for %</span>}</div> })}{L.length > 30 && <div className="sub">+{L.length - 30} more</div>}</div>)}</>,
+    chips: ['What should I bet now?', 'Ticket for Saturday', 'Ticket for Sunday'] }
+}
+
 function answer(q0) {
   const q = norm(q0).replace(/^[¿¡\s"']+/, '').replace(/[?!.]+$/, '')
   if (!q.trim() || /^(help|ayuda|hi|hola|hello|hey|menu)\b/.test(q)) return aHelp()
@@ -284,11 +347,19 @@ function answer(q0) {
   if (/accura|precis|how good|how often.*right|trust|confia/.test(q)) return aAcc()
   if (/take (the )?money|cash|retir|cobr|my ticket|mis bolet|mi bolet|boleto|ticket.*(how|como)|how.*ticket/.test(q) && !/build|make|create|arma|crea|give me|dame/.test(q)) return aCash()
   if (/build|make|create|arma|crea|give me a ticket|dame un|combinada|parlay|safe ticket|high odds|big payout/.test(q)) return aBuild(q)
+  // every club league: tables, scorers, squads, transfers, players, this week's games
+  const lgq = W.leagueIn(q0), WT = W.teamsIn(q0)
+  if (/table|tabla|posiciones|standings|clasificacion/.test(q) && (lgq || WT.length)) return W.week() ? aTable(lgq || W.teamWeek(WT[0].n).lg) : noWeek
+  if (/top scor|scorers|goleador|pichichi|artiller|maximo/.test(q) && lgq && !WT.length) return W.week() ? aLeagueScorers(lgq) : noWeek
+  if (/transfer|fichaj|signing|signed|refuerz|altas|bajas|who (did|has) .* (sign|buy)/.test(q) && WT.length) return aTransfers(WT[0]) || noWeek
+  if (/squad|plantel|plantilla|jugadores de|players of|roster/.test(q) && WT.length) return aSquad(WT[0])
+  if (/this week|esta semana|weekend|fin de semana|games|partidos|fixtures|calendario|juegan/.test(q) && !/ticket|boleto|bet|apuesta/.test(q) && (lgq || day || /week|semana|weekend/.test(q))) return W.week() ? aWeekGames(lgq, day ? day.slice(0, 4) + '-' + day.slice(4, 6) + '-' + day.slice(6) : null) : noWeek
   const T = findTeams(q0); const eid = findMatch(q0, T)
   if (/live bet|en vivo|apuesta en vivo|bets now|live now/.test(q)) return aLiveBets(eid && M.S(eid).state === 'in' ? eid : null)
   if (/^why\??$|^por ?que\??$/.test(q)) { const e = E.SEL || eid; if (e) { const r = aWhy(e); if (r) return r } }
   if (eid && /why|por ?que|explain|explica|how did you|como lo|analy|anali|research|investig/.test(q)) { const r = aWhy(eid); if (r) return { ...r, node: <>{r.node}{T.length ? aTeam(T.slice(0, 2), null)?.node : null}</> } }
-  if (T.length && /research|investig|analy|anali|tell me about|hablame de|info/.test(q)) { const r = aTeam(T, eid && M.S(eid).state !== 'post' ? eid : null); if (r) return r }
+  if (T.length && /research|investig|analy|anali|tell me about|hablame de|info/.test(q) && !WT.length) { const r = aTeam(T, eid && M.S(eid).state !== 'post' ? eid : null); if (r) return r }
+  if (WT.length && !(eid && /chance|odds|quien gana|who wins|probab|predic|bet|apuesta|cuota|why|por ?que/.test(q)) && !(T.length && T[0].kind === 'nt' && !WT.some(w => W.wnorm(w.n) === W.wnorm(T[0].name)))) { if (WT.length >= 2 && eid) return aMatch(eid); const r = aClub(WT[0]); if (r) return r }
   if (eid && /chance|odds|quien gana|who wins|probab|predic|bet|apuesta|cuota/.test(q)) return aMatch(eid)
   if (T.length >= 2 || (T.length && /h2h|head to head|cara a cara|historial/.test(q))) { if (T.length >= 2) { const r = aH2H(T[0], T[1], eid); if (r) return r } }
   if (T.length && /scorer|goleador|who scores|quien marca/.test(q)) return aScorers(T[0])
@@ -296,13 +367,14 @@ function answer(q0) {
   if (/over|under|goal|gol|mas de|menos de|total/.test(q) && !T.length) return aGoals(q)
   if (T.length) { const r = aTeam(T, eid && M.S(eid).state !== 'post' ? eid : null); if (r) return r }
   if (eid) return aMatch(eid)
+  const wp = W.findPlayer(q0); if (wp) return aPlayer(wp)
   const pl = findScorer(q0); if (pl) return { node: <div className="abox"><b>{pl.n}</b> – {pl.c} goals for <b>{pl.t}</b> since 2022{pl.rank === 1 ? ' (their top scorer)' : ''}.</div>, chips: [pl.t + ' form', pl.t + ' scorers'] }
   if (/live|vivo|score|marcador|now|ahora|playing/.test(q)) return aLive()
   return { text: 'I didn’t get that. Try one of these, or type a team name (e.g. “Spain”, “Real Madrid”):', chips: CHIPS }
 }
 
 export function Assistant() {
-  const [open, setOpen] = useState(false); const [msgs, setMsgs] = useState(() => [{ who: 'bot', ...aHelp(), text: 'Hi! Ask me anything – “what should I bet now?”, “ticket for tomorrow”, “why Spain?”, “Real Madrid”, or “how strong is my ticket?”.' }]); const [inp, setInp] = useState('')
+  const [open, setOpen] = useState(false); const [msgs, setMsgs] = useState(() => [{ who: 'bot', ...aHelp(), text: 'Hi! Ask me anything about any of our 20 competitions – “games this weekend”, “Premier League table”, “Haaland”, “Arsenal transfers”, “ticket for Saturday”, “what should I bet now?”.' }]); const [inp, setInp] = useState('')
   const box = useRef(null)
   useEffect(() => { const f = () => setOpen(false); window.addEventListener('mb:builder', f); return () => window.removeEventListener('mb:builder', f) }, [])
   useEffect(() => { if (box.current) box.current.scrollTop = box.current.scrollHeight }, [msgs, open])
@@ -319,7 +391,7 @@ export function Assistant() {
   return <>
     <button className={'abtn' + (open ? ' on' : '')} onClick={() => setOpen(!open)} aria-label="Assistant">{open ? '✕' : '💬'}</button>
     {open && <div className="apanel">
-      <div className="ahd"><b>Assistant</b><span className="sub">our own numbers · {DBINFO.nt} national teams · 5 big leagues</span></div>
+      <div className="ahd"><b>Assistant</b><span className="sub">our own numbers · 17 club leagues + national teams</span></div>
       <div className="amsgs" ref={box}>{msgs.map((m, i) => <div key={i} className={'amsg ' + m.who}>
         {m.text && <div>{m.text}</div>}{m.node}
         {m.open && <button className="linkb" onClick={() => { M.selectMatch(m.open); window.dispatchEvent(new CustomEvent('mb:view', { detail: 'stadium' })); setOpen(false) }}>Open this game ›</button>}

@@ -121,6 +121,11 @@ function clubKey(lg, name) {
   const T = CLUBS && CLUBS.teams && CLUBS.teams[lg];
   if (!T) return null;
   const n = enorm(name);
+  // leagues trained on ESPN names: exact names only (never mix up "Universidad de Chile" and "Universidad Católica")
+  if ((CLUBS.exact || []).includes(lg)) {
+    for (const k of Object.keys(T)) if (enorm(k) === n) return k;
+    return null;
+  }
   if (CALIAS[n] && T[CALIAS[n]]) return CALIAS[n];
   const strip = (s) => enorm(s).replace(/\b(fc|afc|cf|ac|as|sc|ssc|sv|vfb|vfl|tsg|rc|ogc|aj|1\.|club|de|calcio)\b/g, "").replace(/[^a-z ]/g, "").trim();
   const sn = strip(name);
@@ -134,8 +139,9 @@ function clubLam(m) {
   const T = CLUBS.teams[m.lg], mu = CLUBS.lgm[m.lg], kp = CLUBS.kp || 25;
   const [rh, fh] = T[kh], [ra, fa] = T[ka];
   const x = (f, i, j) => (f[i] + kp) / (f[j] + kp);
-  const dr = rh - ra;
-  return [clamp(mu[0] * Math.exp(CLUBS.b * dr) * x(fh, 0, 1) * x(fa, 2, 3), 0.2, 4.2), clamp(mu[1] * Math.exp(-CLUBS.b * dr) * x(fa, 0, 1) * x(fh, 2, 3), 0.15, 3.8)];
+  const dr = rh - ra,
+    b = (CLUBS.bLg && CLUBS.bLg[m.lg]) || CLUBS.b;
+  return [clamp(mu[0] * Math.exp(b * dr) * x(fh, 0, 1) * x(fa, 2, 3), 0.2, 4.2), clamp(mu[1] * Math.exp(-b * dr) * x(fa, 0, 1) * x(fh, 2, 3), 0.15, 3.8)];
 }
 // yellow cards expected per team, from each club's card history (league average for national teams)
 function cardsOf(m) {
@@ -234,10 +240,18 @@ function applyClubSeason(lg, games) {
   const T = CLUBS && CLUBS.teams && CLUBS.teams[lg];
   const mu = CLUBS && CLUBS.lgm && CLUBS.lgm[lg];
   if (!T || !mu || !games.length) return 0;
-  const b = CLUBS.b || 0.002, kp = CLUBS.kp || 25, K = 15, DEC = 0.9;
-  // new season: every rating moves 20% back towards average (as in training)
+  const b = (CLUBS.bLg && CLUBS.bLg[lg]) || CLUBS.b || 0.002,
+    kp = CLUBS.kp || 25,
+    K = (CLUBS.kLg && CLUBS.kLg[lg]) || 15,
+    DEC = 0.9;
+  const upto = clubUpto(lg);
+  const games0 = games.filter((g) => g.d > upto);
+  if (!games0.length) return 0;
+  // a new season since the snapshot: every rating moves 20% back towards average (as in training)
+  const cal = (CLUBS.cal || []).includes(lg);
+  const seasonOf = (d) => (cal ? +d.slice(0, 4) : +d.slice(5, 7) >= 7 ? +d.slice(0, 4) : +d.slice(0, 4) - 1);
   if (!CLUBS._reg) CLUBS._reg = {};
-  if (!CLUBS._reg[lg]) {
+  if (!CLUBS._reg[lg] && seasonOf(games0[0].d) > seasonOf(upto)) {
     Object.values(T).forEach((v) => (v[0] = v[0] * 0.8 + 1500 * 0.2));
     CLUBS._reg[lg] = 1;
   }
@@ -250,7 +264,7 @@ function applyClubSeason(lg, games) {
   const ylg = (CLUBS.ylg || {})[lg] || 2;
   let n = 0;
   games.forEach((g) => {
-    if (g.d <= CLUBS.upto) return;
+    if (g.d <= upto) return;
     const h = key(g.h), a = key(g.a);
     const H = T[h], A = T[a];
     const dr = H[0] - A[0];
@@ -301,6 +315,8 @@ function clubRating(lg, name) {
   const kp = CLUBS.kp || 25;
   return { r, att: (f[0] + kp) / (f[1] + kp), def: (f[2] + kp) / (f[3] + kp), y: y ?? 1 };
 }
+const clubUpto = (lg) => (CLUBS && CLUBS.uptoLg && CLUBS.uptoLg[lg]) || (CLUBS && CLUBS.upto);
+const clubTest = (lg) => (CLUBS && CLUBS.test && CLUBS.test[lg]) || null;
 const ratingsInfo = () => ({ nat: ELO.upto, club: CLUBS && CLUBS.upto });
 
-export { clubRating, applyClubSeason, applyNationalGames, ratingsInfo, eloOf, eloKey, formX, eloLam, dcLam, clubKey, clubLam, cardsOf, eloK, updateElo, loadRatings };
+export { clubUpto, clubTest, clubRating, applyClubSeason, applyNationalGames, ratingsInfo, eloOf, eloKey, formX, eloLam, dcLam, clubKey, clubLam, cardsOf, eloK, updateElo, loadRatings };

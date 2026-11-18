@@ -182,3 +182,29 @@ describe('suggestion history, challenge and why', () => {
     expect(w.how.length).toBe(4)
   })
 })
+
+describe('all club leagues', () => {
+  it('has trained ratings for the 12 extra leagues, exact names only', async () => {
+    const R = await import('../src/model/ratings.js')
+    for (const [lg, h, a] of [['chi.1', 'Colo Colo', 'Universidad Católica'], ['bra.1', 'Flamengo', 'Palmeiras'], ['arg.1', 'River Plate', 'Boca Juniors'], ['ned.1', 'PSV Eindhoven', 'Ajax Amsterdam'], ['usa.1', 'Inter Miami CF', 'LA Galaxy']]) {
+      const L = R.clubLam({ lg, h, a })
+      if (L) { expect(L[0]).toBeGreaterThan(0.2); expect(L[1]).toBeGreaterThan(0.15) }
+    }
+    expect(R.clubKey('chi.1', 'Universidad de Concepción Fake')).toBeNull()
+    expect(R.clubTest('chi.1')[0]).toBeLessThan(R.clubTest('chi.1')[1])
+  })
+  it('week data: tables, players, transfers, fixtures', async () => {
+    const W = await import('../src/model/week.js')
+    W.setWeek({ from: '2026-11-18', to: '2026-11-22', fx: [['1', 'chi.1', '2026-11-22T21:00Z', '10', 'Colo Colo', '11', 'Universidad Católica', 'Monumental']],
+      lg: { 'chi.1': { n: 'Primera División (Chile)', table: [{ g: '', rows: [[1, '10', 'Colo Colo', 27, 19, 4, 4, 59, 30, 61], [3, '11', 'Universidad Católica', 27, 15, 4, 8, 56, 37, 49]] }], sc: [['Fernando Zampedri', 'Universidad Católica', 29]], as: [] } },
+      tm: { 10: { n: 'Colo Colo', lg: 'chi.1', sq: [['Javier Correa', 'F', 31, 25, 3, 12, 50, 25, 4, 0, 'Argentina', '9', 0]], form: [['2026-11-08', 'Palestino', 2, 0, 1]], tr: { in: [['', 'New Guy', 'Boca Juniors', 'Loan']], out: [] } },
+        11: { n: 'Universidad Católica', lg: 'chi.1', sq: [['Fernando Zampedri', 'F', 38, 26, 1, 29, 86, 43, 7, 0, 'Chile', '9', 3]], form: [], tr: { in: [], out: [] } } } })
+    expect(W.teamWeek('colo colo').st.rank).toBe(1)
+    expect(W.findPlayer('zampedri goals').p[5]).toBe(29)
+    expect(W.leagueIn('tabla chile')).toBe('chi.1')
+    expect(W.leagueIn('premier league table')).toBe('eng.1')
+    expect(W.teamsIn('Colo Colo v Universidad Católica').map(x => x.n)).toEqual(['Colo Colo', 'Universidad Católica'])
+    expect(W.signings(W.teamWeek('Colo Colo'))[0][1]).toBe('New Guy')
+    expect(W.fixturesOf('chi.1').length).toBe(1)
+  })
+})

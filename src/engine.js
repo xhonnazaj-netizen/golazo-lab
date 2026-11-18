@@ -4,11 +4,12 @@ const PERSONAL = Object.values(import.meta.glob('./data/personal.local.js', { ea
 if (PERSONAL && PERSONAL.default && PERSONAL.default.T) DATA.T = PERSONAL.default.T;
 import { COMBO_REC } from './data/combo-record.js';
 import SUG_SEED from './data/sug-seed.js';
+import { loadWeek, teamWeek, keyPlayers, signings, cardMen, week as weekData } from './model/week.js';
 import { teamInfo as tdbInfo, h2h as tdbH2H, rankOf as tdbRank } from './model/teamdb.js';
 import { LS } from './util/storage.js';
 import { BASE, W, J, lim } from './data/provider.js';
 import { rnd, pois, gam, bs, pp, gridOf, pdev, priorFrom, clamp } from './model/math.js';
-import { eloOf, eloKey, formX, eloLam, clubLam, clubKey, clubRating, cardsOf, updateElo, loadRatings, applyClubSeason, applyNationalGames, ratingsInfo } from './model/ratings.js';
+import { eloOf, eloKey, formX, eloLam, clubLam, clubKey, clubRating, clubUpto, clubTest, cardsOf, updateElo, loadRatings, applyClubSeason, applyNationalGames, ratingsInfo } from './model/ratings.js';
 import { markets, marketsShown, shown, predictability, nice } from './model/markets.js';
 /* Golazo Lab engine: data, models, live polling, tickets. UI lives in React components. */
 const UI = { status: "Connecting…", ok: true, toasts: [], goal: null };
@@ -83,7 +84,22 @@ const LEAGUES = [
   ["fra.1", "Ligue 1"],
   ["uefa.champions", "Champions League"],
   ["uefa.europa", "Europa League"],
+  ["chi.1", "Chile – Primera"],
+  ["bra.1", "Brazil – Série A"],
+  ["arg.1", "Argentina – Liga Profesional"],
+  ["mex.1", "Mexico – Liga MX"],
+  ["usa.1", "USA – MLS"],
+  ["col.1", "Colombia – Liga BetPlay"],
+  ["eng.2", "England – Championship"],
+  ["ned.1", "Netherlands – Eredivisie"],
+  ["por.1", "Portugal – Primeira Liga"],
+  ["bel.1", "Belgium – Pro League"],
+  ["tur.1", "Turkey – Süper Lig"],
+  ["sco.1", "Scotland – Premiership"],
 ];
+// which model a competition uses: club leagues -> club ratings, everything else -> national-team ratings
+const CLUB_LEAGUES = new Set(["eng.1", "esp.1", "ita.1", "ger.1", "fra.1", "chi.1", "bra.1", "arg.1", "mex.1", "usa.1", "col.1", "eng.2", "ned.1", "por.1", "bel.1", "tur.1", "sco.1", "uefa.champions", "uefa.europa"]);
+const ownLam = (m) => (CLUB_LEAGUES.has(m.lg) ? clubLam(m) : eloLam(m));
 const OKEY = {
   "uefa.nations": "soccer_uefa_nations_league",
   "eng.1": "soccer_epl",
@@ -93,6 +109,17 @@ const OKEY = {
   "fra.1": "soccer_france_ligue_one",
   "uefa.champions": "soccer_uefa_champs_league",
   "uefa.europa": "soccer_uefa_europa_league",
+  "chi.1": "soccer_chile_campeonato",
+  "bra.1": "soccer_brazil_campeonato",
+  "arg.1": "soccer_argentina_primera_division",
+  "mex.1": "soccer_mexico_ligamx",
+  "usa.1": "soccer_usa_mls",
+  "eng.2": "soccer_efl_champ",
+  "ned.1": "soccer_netherlands_eredivisie",
+  "por.1": "soccer_portugal_primeira_liga",
+  "bel.1": "soccer_belgium_first_div",
+  "tur.1": "soccer_turkey_super_league",
+  "sco.1": "soccer_spl",
 };
 const CDF = DATA.cdf,
   PREV = DATA.prev,
@@ -426,7 +453,7 @@ function mkMatch(e, lg) {
     dyn: 1,
     neu: !!c.neutralSite,
   };
-  const EL = eloLam(m) || clubLam(m);
+  const EL = ownLam(m);
   if (EL) {
     m.lam = EL;
     m.lamModel = EL;
@@ -476,10 +503,10 @@ function formModel(m, sm) {
 function applyOwnModel(m, sm) {
   if (m.enh) return;
   // our own model: national-team ratings or club ratings, plus each team's last 5 games. Bookmaker odds are NOT mixed in.
-  const R = eloLam(m) || clubLam(m);
+  const R = ownLam(m);
   const F5 = formModel(m, sm);
   let F = R;
-  if (R && F5 && !eloLam(m)) F = [Math.exp(0.75 * Math.log(R[0]) + 0.25 * Math.log(F5[0])), Math.exp(0.75 * Math.log(R[1]) + 0.25 * Math.log(F5[1]))];
+  if (R && F5 && CLUB_LEAGUES.has(m.lg)) F = [Math.exp(0.75 * Math.log(R[0]) + 0.25 * Math.log(F5[0])), Math.exp(0.75 * Math.log(R[1]) + 0.25 * Math.log(F5[1]))];
   if (!F) F = F5;
   let lam = F;
   m.src = R ? "our team ratings" : F5 ? "recent form (last 5 games)" : "league average";
@@ -1872,7 +1899,7 @@ function whyOf(eid) {
   const H = frac(R, (R, n) => R.GH[n] > R.GA[n]),
     D = frac(R, (R, n) => R.GH[n] === R.GA[n]),
     A = 1 - H - D;
-  const nat = eloOf(m.h) != null && eloOf(m.a) != null;
+  const nat = !CLUB_LEAGUES.has(m.lg) && eloOf(m.h) != null && eloOf(m.a) != null;
   const club = !nat && clubKey(m.lg, m.h) && clubKey(m.lg, m.a);
   const pts = [];
   const team = (name, side) => {
@@ -1919,6 +1946,28 @@ function whyOf(eid) {
       pts.push({ k: "form", t: `${x.name}: last games ${fs}${b.length ? " – " + b.join(", ") : ""}.`, form: x.form });
     } else if (b.length) pts.push({ k: "form", t: `${x.name}: ${b.join(", ")}.` });
   });
+  // 2b. clubs: table, goals, new signings, cards (this week's data)
+  if (!nat && weekData()) {
+    const wh = teamWeek(m.h),
+      wa = teamWeek(m.a);
+    const ord = (n) => n + (n % 10 === 1 && n % 100 !== 11 ? "st" : n % 10 === 2 && n % 100 !== 12 ? "nd" : n % 10 === 3 && n % 100 !== 13 ? "rd" : "th");
+    const tl = [wh, wa].filter((w) => w && w.st).map((w) => `${w.n} ${ord(w.st.rank)}${w.st.group ? " in " + w.st.group : ""} (${w.st.pts} pts from ${w.st.gp} games)`);
+    if (tl.length) pts.push({ k: "table", t: "Table: " + tl.join(" · ") + "." });
+    const kp = [wh, wa].filter(Boolean).map((w) => {
+      const p = keyPlayers(w, 2);
+      return p.length ? `${w.n}: ${p.map((x) => `${x[0]} ${x[5]}`).join(", ")}` : "";
+    }).filter(Boolean);
+    if (kp.length) pts.push({ k: "players", t: "Top scorers this season – " + kp.join(" · ") + "." });
+    const sg = [wh, wa].filter((w) => w && w.tr && w.tr.in.length).map((w) => `${w.n} signed ${w.tr.in.length} (e.g. ${signings(w, 3).map((x) => x[1]).join(", ")})`);
+    if (sg.length) pts.push({ k: "signings", t: "Summer transfers: " + sg.join(" · ") + "." });
+    const cm = [wh, wa].filter(Boolean).flatMap((w) => cardMen(w, 1).map((x) => `${x[0]} (${w.n}) ${x[8]} yellows`));
+    if (cm.length) pts.push({ k: "cards", t: "Most booked: " + cm.join(" · ") + "." });
+    [wh, wa].forEach((w, i) => {
+      if (w && w.form && w.form.length && !pts.some((p) => p.k === "form" && p.t.startsWith(w.n))) {
+        pts.push({ k: "form", t: `${w.n}: last games ${w.form.slice(0, 5).map((g) => (g[2] > g[3] ? "W" : g[2] === g[3] ? "D" : "L")).join("")} (${w.form.slice(0, 3).map((g) => (g[4] ? "v " : "@ ") + g[1] + " " + g[2] + "-" + g[3]).join(", ")}).`, side: i });
+      }
+    });
+  }
   // 3. home / neutral
   pts.push({ k: "home", t: m.neu ? "Neutral ground – no home advantage." : `${m.h} play at home – that's worth about a third of a goal.` });
   // 4. head to head (national teams)
@@ -1948,7 +1997,7 @@ function whyOf(eid) {
       "We add home advantage, then play this match 20,000 times on the computer.",
       "Our % = how often each result happened in those 20,000 games.",
     ],
-    data: nat ? "National teams: every international since 1872, updated with this season's games." : club ? "Clubs: 19,760 games from the 5 big leagues since 2015, plus this season's results." : "League averages.",
+    data: nat ? "National teams: every international since 1872, updated with this season's games." : club ? ((clubTest(m.lg) ? `This league: tested on the last ${clubTest(m.lg)[2]} games, our % beat the league average by ${Math.round((1 - clubTest(m.lg)[0] / clubTest(m.lg)[1]) * 1000) / 10}%. ` : "Big 5 leagues: 19,760 games since 2015. ") + "Results, squads and tables: ESPN · transfers: Wikipedia (CC BY-SA).") : "League averages.",
   };
 }
 // ---- best picks per team (for people building their own tickets) ----
@@ -2506,7 +2555,7 @@ async function refreshOdds() {
 }
 // ---- this season's results (ESPN), replayed into our ratings once a day ----
 const INTL = ["uefa.nations", "fifa.friendly", "fifa.worldq.uefa", "fifa.worldq.conmebol", "fifa.worldq.concacaf", "fifa.worldq.afc", "fifa.worldq.caf", "uefa.euroq", "concacaf.nations.league", "fifa.world"];
-const CLUBLG = ["eng.1", "esp.1", "ita.1", "ger.1", "fra.1"];
+const CLUBLG = ["eng.1", "esp.1", "ita.1", "ger.1", "fra.1", "chi.1", "bra.1", "arg.1", "mex.1", "usa.1", "col.1", "eng.2", "ned.1", "por.1", "bel.1", "tur.1", "sco.1"];
 let SEASON = { nat: 0, club: 0 };
 function parseResults(j, lg) {
   return (j.events || [])
@@ -2559,7 +2608,7 @@ function refreshLams() {
   Object.values(byE).forEach((m) => {
     const s = S(m.eid);
     if (s.state === "post") return;
-    const own = eloLam(m) || clubLam(m);
+    const own = ownLam(m);
     if (!own) return;
     m.lamModel = own.slice();
     m.lam = own.slice();
@@ -2574,7 +2623,7 @@ async function loadSeason() {
   const next = (d) => (d ? nextYmd(String(d).replace(/-/g, "")) : "20260701");
   const nat = (await Promise.all(INTL.map((lg) => seasonGames(lg, next(info.nat))))).flat().sort((a, b) => (a.d < b.d ? -1 : 1));
   SEASON.nat = applyNationalGames(nat);
-  const clubs = await Promise.all(CLUBLG.map((lg) => seasonGames(lg, next(info.club))));
+  const clubs = await Promise.all(CLUBLG.map((lg) => seasonGames(lg, next(clubUpto(lg) || info.club))));
   SEASON.club = 0;
   CLUBLG.forEach((lg, i) => (SEASON.club += applyClubSeason(lg, clubs[i].sort((a, b) => (a.d < b.d ? -1 : 1)))));
   SEASON.t = Date.now();
@@ -2585,6 +2634,8 @@ async function loadSeason() {
 async function start() {
   // nightly ratings (Pages) first, so every new match is priced with the freshest team strengths
   await loadRatings();
+  // this week's squads, tables, scorers and transfers (collected nightly) – in the background
+  loadWeek().then((w) => w && emit()).catch(() => {});
   // this season's results: wait up to 5 s, then carry on (the update still lands when it arrives)
   await Promise.race([loadSeason().catch(() => {}), new Promise((r) => setTimeout(r, 5000))]);
   const d = new Date(),

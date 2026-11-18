@@ -300,14 +300,22 @@ export const normClub = (s) => {
   x = ALIAS[x] || x;
   return x.split(' ').filter((w) => w && !STOP.has(w) && !/^\d+$/.test(w)).join(' ');
 };
+// same-name clubs in different countries (Everton / Everton CD): prefer the page's own leagues, skip if still ambiguous
 export function clubMatcher(teams) {
-  const L = teams.map(([id, name]) => ({ id, name, k: normClub(name) })).filter((t) => t.k);
-  return (name) => {
+  const L = teams.map(([id, name, lg]) => ({ id, name, lg, k: normClub(name) })).filter((t) => t.k);
+  return (name, prefer = []) => {
     const k = normClub(name);
     if (!k) return null;
-    let t = L.find((x) => x.k === k);
-    if (!t) t = L.find((x) => (x.k.length >= 5 && k.startsWith(x.k)) || (k.length >= 5 && x.k.startsWith(k)));
-    return t ? t.id : null;
+    const raw = String(name).toLowerCase().trim();
+    const ex = [...new Set(L.filter((x) => x.name.toLowerCase() === raw).map((x) => x.id))];
+    if (ex.length === 1) return ex[0];
+    let C = L.filter((x) => x.k === k);
+    if (!C.length) C = L.filter((x) => (x.k.length >= 5 && k.startsWith(x.k + ' ')) || (k.length >= 5 && x.k.startsWith(k + ' ')));
+    const ids = [...new Set(C.map((x) => x.id))];
+    if (ids.length === 1) return ids[0];
+    if (!ids.length) return null;
+    const pref = [...new Set(C.filter((x) => prefer.includes(x.lg)).map((x) => x.id))];
+    return pref.length === 1 ? pref[0] : null;
   };
 }
 
@@ -344,18 +352,19 @@ export async function collectWeek({ now = new Date(), only = null, wiki = true, 
   if (wiki) {
     const allTeams = [];
     Object.entries(week.lg).forEach(([lg, x]) => x.table.forEach((g) => g.rows.forEach((r) => allTeams.push([r[1], r[2], lg]))));
-    const match = clubMatcher(allTeams.map(([id, n]) => [id, n]));
+    const match = clubMatcher(allTeams);
     const countries = [...new Set(lgs.map((lg) => LEAGUES[lg].wiki).filter(Boolean))];
     const seen = new Set();
     let n = 0;
     for (const c of countries) {
+      const prefer = lgs.filter((lg) => LEAGUES[lg].wiki === c);
       const rows = await wikiTransfers(c);
       LOG(`wiki ${c}: ${rows.length} rows`);
       rows.forEach(([date, player, fromC, toC, fee]) => {
         const key = player + '|' + fromC + '|' + toC;
         if (seen.has(key)) return;
         seen.add(key);
-        const fi = match(fromC), ti = match(toC);
+        const fi = match(fromC, prefer), ti = match(toC, prefer);
         const add = (id, dir, rec) => {
           if (!id) return;
           if (!week.tm[id]) {
