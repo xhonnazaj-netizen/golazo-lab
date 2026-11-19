@@ -1,7 +1,7 @@
 // Ratings snapshot written by model/train.py (Elo + form, and penaltyblog Dixon-Coles).
 // The app also loads the latest public/ratings.json when served over http(s).
 const RATINGS = {
- "updated": "2026-11-18T16:27Z",
+ "updated": "2026-11-19T16:33Z",
  "elo": {
   "r": {
    "Scotland": 1787,
@@ -2071,7 +2071,7 @@ const RATINGS = {
    ],
    "Aymara": [
     0.7,
-    -0.5549
+    -0.5548
    ],
    "Azerbaijan": [
     1.0501,
@@ -2182,7 +2182,7 @@ const RATINGS = {
     0.7078
    ],
    "Cape Verde": [
-    1.536,
+    1.5359,
     -1.4411
    ],
    "Cayman Islands": [
@@ -2295,7 +2295,7 @@ const RATINGS = {
    ],
    "Equatorial Guinea": [
     0.7436,
-    -1.2608
+    -1.2609
    ],
    "Eritrea": [
     1.2213,
@@ -2338,7 +2338,7 @@ const RATINGS = {
     -1.0383
    ],
    "Frøya": [
-    -1.0732,
+    -1.0733,
     0.8177
    ],
    "Gabon": [
@@ -2375,7 +2375,7 @@ const RATINGS = {
    ],
    "Greece": [
     1.9029,
-    -1.9157
+    -1.9156
    ],
    "Greenland": [
     -0.0143,
@@ -2595,7 +2595,7 @@ const RATINGS = {
    ],
    "Matabeleland": [
     1.6951,
-    -1.802
+    -1.8019
    ],
    "Maule Sur": [
     0.7047,
@@ -2822,7 +2822,7 @@ const RATINGS = {
     -0.3442
    ],
    "Saudi Arabia": [
-    1.4515,
+    1.4514,
     -1.7105
    ],
    "Scotland": [
@@ -2959,7 +2959,7 @@ const RATINGS = {
    ],
    "Togo": [
     1.4473,
-    -1.6047
+    -1.6048
    ],
    "Tonga": [
     -0.5841,
@@ -3019,7 +3019,7 @@ const RATINGS = {
    ],
    "Uzbekistan": [
     1.7732,
-    -1.53
+    -1.5299
    ],
    "Vanuatu": [
     0.4093,
@@ -3042,15 +3042,15 @@ const RATINGS = {
     -1.7463
    ],
    "West Papua": [
-    -1.4005,
+    -1.4006,
     -0.0176
    ],
    "Western Isles": [
-    0.842,
+    0.8419,
     0.122
    ],
    "Yemen": [
-    1.2497,
+    1.2498,
     -0.5947
    ],
    "Ynys Môn": [
