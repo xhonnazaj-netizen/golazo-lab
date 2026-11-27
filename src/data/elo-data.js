@@ -1,7 +1,7 @@
 // Ratings snapshot written by model/train.py (Elo + form, and penaltyblog Dixon-Coles).
 // The app also loads the latest public/ratings.json when served over http(s).
 const RATINGS = {
- "updated": "2026-11-26T17:43Z",
+ "updated": "2026-11-27T17:28Z",
  "elo": {
   "r": {
    "Scotland": 1786,
